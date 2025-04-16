@@ -1,0 +1,16 @@
+[project]
+name = "blueprint-pipeline"
+version = "0.1.0"
+description = "The `uv` environment for this particular module."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "factorio-draftsman>=2.0.1",
+    "luigi>=3.6.0",
+    "pydantic==2.10.6",
+]
+
+[dependency-groups]
+dev = [
+    "notebook>=7.4.0",
+]

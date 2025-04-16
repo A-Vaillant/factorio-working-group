@@ -1,9 +1,8 @@
 run:
-	uv run python new_intake.py ProcessAllCSVs
-	# python new_intake.py ProcessAllCSVs
+	uv run python pipeline.py ProcessAllCSVs 
 
 debug:
-	uv run python new_intake.py ProcessAllCSVs --output-directory "working"
-	uv run python new_intake.py GenerateManifest --output-directory "working"
-	# python new_intake.py ProcessAllCSVs --output-directory "working"
-	# python new_intake.py GenerateManifest --output-directory "working"
+	uv run python pipeline.py ProcessAllCSVs --output-directory "working" >debug.log 2>debug.log
+	uv run python pipeline.py GenerateManifest --output-directory "working" >>debug.log 2>>debug.log
+	# python pipeline.py ProcessAllCSVs --output-directory "working"
+	# python pipeline.py GenerateManifest --output-directory "working"

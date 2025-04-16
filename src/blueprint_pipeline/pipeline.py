@@ -1,10 +1,10 @@
 """
-factorio_blueprint_pipeline.py
+pipeline.py
 
 An idempotent pipeline for processing Factorio blueprint CSVs
-using Luigi for orchestration and the existing intake.py code.
+using Luigi for orchestration.
 
-Author: AV, Claude Opus 3.7 (April 2025)
+Author: A. Vaillant, Claude Opus 3.7 (April 2025)
 """
 import sys
 import csv
@@ -15,104 +15,27 @@ import os
 from collections import Counter
 from pathlib import Path
 from typing import List, Dict, Callable, Any, Optional
-from datetime import datetime
+from datetime import datetime, date
 
 # Assuming imports from draftsman would work
 from draftsman.blueprintable import Blueprintable, Blueprint
 from draftsman.utils import string_to_JSON
 
-from pydantic import BaseModel, Field, field_validator
-from typing_extensions import Annotated
+
+# enrichment
+from enrichment import *
+from models import ScrapedData, ManifestEntry, DataManifest
+from utils import calculate_file_hash, hash_bp_row
 
 
 csv.field_size_limit(sys.maxsize)
 
 
-class ScrapedData(BaseModel):
-    """Schema for a single processed data entry."""
-    name: str
-    data: str  # The raw data string
-    metadata: Dict[str, Any] = Field(default_factory=dict)
-    label: str = ""
-    source_csv: str = ""
-    source_row: int = 0
-    original_name: Optional[str] = None
-    
-    # Replace Config class with model_config dict
-    model_config = {
-        "extra": "allow"  # Allow additional fields from CSV
-    }
-    
-    @field_validator('data')
-    @classmethod  # Add this decorator
-    def validate_data_string(cls, v):
-        """Basic validation that the data string is not empty."""
-        if not v:
-            raise ValueError("Data string cannot be empty")
-        return v
-
-
 # ==================== Configuration Parameters 
 class PipelineConfig(luigi.Config):
-    source_directory = luigi.Parameter(default="../data/raw")
-    output_directory = luigi.Parameter(default="../data/processed")
+    source_directory = luigi.Parameter(default="../../data/raw")
+    output_directory = luigi.Parameter(default="../../data/processed")
 
-
-# ==================== Etc. 
-def calculate_file_hash(filename):
-    """Calculate MD5 hash of file for idempotency checking."""
-    hash_md5 = hashlib.md5()
-    with open(filename, "rb") as f:
-        for chunk in iter(lambda: f.read(4096), b""):
-            hash_md5.update(chunk)
-    return hash_md5.hexdigest()
-
-
-def hash_bp_row(bp_string):
-    """Hash a blueprint string to generate a unique filename."""
-    return hashlib.md5(bp_string.encode()).hexdigest()[:10]
-
-
-def recursive_blueprint_book_parse(bp_book: Blueprintable) -> List[Blueprint]:
-    """Extract all blueprints from a blueprint book recursively."""
-    # Reached a leaf node
-    if isinstance(bp_book, Blueprint):
-        return [bp_book]
-
-    blueprints = []
-    for bp_node in bp_book.blueprints:
-        blueprints += recursive_blueprint_book_parse(bp_node)
-    return blueprints
-
-
-def quantify_entities(bp: Blueprint, granularity: int = 5) -> Dict[str, int]:
-    """Count entities in a blueprint with specified granularity."""
-    # granularity: How specific we want. 5 will be everything, lower ones
-    # will group together entities into classes (conveyor belts, assemblers)
-    if granularity == 5:
-        grain = lambda x: x
-    else:
-        # Add more granularity levels as needed
-        grain = lambda x: x  
-
-    # Create counter of entity names
-    c = Counter(grain(entity.name) for entity in bp.entities)
-    return dict(c)
-
-
-# TODO: Populate with actual tech level mapping
-tech_map = {}
-def quantify_tech_level(bp: Blueprint) -> int:
-    """Determine the highest tech level required for a blueprint."""
-    # Using Factorio 1.0. 0 is initial, 1 is red science.
-    if not bp.entities:
-        return 0
-        
-    tech_levels = {}
-    for e in bp.entities:
-        tech_levels[e.name] = tech_map.get(e.name, 0)
-    
-    return max(tech_levels.values()) if tech_levels else 0
 
 def parse_csv_row(row: Dict[str, Any], 
                  row_num: int,
@@ -129,10 +52,11 @@ def parse_csv_row(row: Dict[str, Any],
     # Create a name for the data entry
     name = row.get('name', f"data_{row_num}")
     
+    # One of them is DD-MM-YY.
     processed_data = ScrapedData(
         name=name,
         data=data_string,
-        source_csv=csv_file,
+        source_csv=os.path.basename(csv_file),
         source_row=row_num,
         # Include all other fields from the CSV
         **{k: v for k, v in row.items() if k not in ['data', 'name']}
@@ -215,21 +139,6 @@ class ProcessAllCSVs(luigi.WrapperTask):
         return tasks
 
 
-class ManifestEntry(BaseModel):
-    """Schema for an entry in the data manifest."""
-    filename: str
-    name: str
-    source_csv: str
-    # Any additional metadata fields you want to include
-
-
-class DataManifest(BaseModel):
-    """Schema for the data manifest file."""
-    processed_time: str
-    entry_count: int
-    entries: List[ManifestEntry]
-
-
 class GenerateManifest(luigi.Task):
     """Generate a manifest file with metadata about all processed data entries."""
     source_directory = luigi.Parameter(default=PipelineConfig().source_directory)
@@ -256,8 +165,8 @@ class GenerateManifest(luigi.Task):
             
             entry = ManifestEntry(
                 filename=json_file.name,
-                name=data.name,
-                source_csv=data.source_csv,
+                name=data['name'],
+                source_csv=data['source_csv'],
             )
             
             entries.append(entry)
