@@ -3,6 +3,7 @@ Written hastily and without internet access, so likely doesn't work!
 TODO: Import Draftsman, make sure CsvReading works, add in JsonOutputting.
 """
 from pathlib import Path
+from draftsman.blueprintlike import Blueprintlike, Blueprint
 import csv, json
 
 
@@ -94,3 +95,5 @@ def quantify_tech_level(bp: Blueprint) -> int:
 
 
 with __name__ == "__main__":
+    process_csv(source_directory)
+
