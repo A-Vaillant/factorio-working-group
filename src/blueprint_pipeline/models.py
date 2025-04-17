@@ -3,28 +3,24 @@ models.py
 
 A bunch of Pydantic stuff that Claude generated.
 """
-from typing import Optional, Any, Optional
+import os
+from typing import Optional, Any, ClassVar, Union
 from pydantic import BaseModel, Field, field_validator
 from typing_extensions import Annotated
 
 class ScrapedData(BaseModel):
     """Schema for a single processed data entry."""
     name: str
-    data: str  # The raw data string
-    metadata: dict = Field(default_factory=dict)
-    label: str = ""
-    source_csv: str = ""
-    source_row: int = 0
+    data: str  # The blueprint string.
+    source_file: str = ""
+    source_row: Optional[int] = None
     date: Optional[str] = None
-    original_name: Optional[str] = None
-    
-    # Replace Config class with model_config dict
-    model_config = {
-        "extra": "allow"  # Allow additional fields from CSV
-    }
+    tags: list = Field(default_factory=list)
+
+    expected_extension: ClassVar[Optional[str]] = None
     
     @field_validator('data')
-    @classmethod  # Add this decorator
+    @classmethod
     def validate_data_string(cls, v):
         """Basic validation that the data string is not empty."""
         if not v:
@@ -43,12 +39,53 @@ class ScrapedData(BaseModel):
         except Exception:
             raise Exception(f"Failure in casting date string: {v}")
 
+    @field_validator('source_file')
+    @classmethod
+    def validate_source_file(cls, v: str) -> str:
+        """Generic validator for file extensions based on class property."""
+        if not v:
+            raise ValueError("Expected a source file but not provided.")
+        elif not cls.expected_extension:
+            return v
+            
+        _, extension = os.path.splitext(v.lower())
+        if extension != cls.expected_extension:
+            raise ValueError(f"Expected {cls.expected_extension} file, got '{extension}' extension")
+        return v
+
+class ScrapedCSVRow(ScrapedData):
+    source_row: int
+
+    expected_extension: ClassVar[str] = '.csv'
+    
+    @field_validator('source_row')
+    @classmethod
+    def validate_source_row(cls, v: int) -> int:
+        """Ensure source_row is a positive integer."""
+        if v < 0:
+            raise ValueError(f"Row index must be non-negative, got {v}")
+        return v
+
+
+class ScrapedJSONFile(ScrapedData):
+    source_row: None = None
+
+    expected_extension: ClassVar[str] = '.json'
+    
+    @field_validator('source_row')
+    @classmethod
+    def validate_source_row_none(cls, v: None) -> None:
+        """Ensure source_row is None for JSON files."""
+        if v is not None:
+            raise ValueError("source_row must be None for JSON files")
+        return v
+
 
 class ManifestEntry(BaseModel):
     """Schema for an entry in the data manifest."""
     filename: str
     name: str
-    source_csv: str
+    source_file: str
     # Any additional metadata fields you want to include
 
 
@@ -59,9 +96,9 @@ class DataManifest(BaseModel):
     entries: list[ManifestEntry]
 
 
-class BlueprintData(BaseModel):
+class BlueprintMetaData(BaseModel):
     """
-    Represents an individual blueprint with enriched data.
+    Represents an individual blueprint.
     Created by splitting a blueprint book into its component blueprints.
     """
     # Basic identification
@@ -69,32 +106,23 @@ class BlueprintData(BaseModel):
     data: str  # The blueprint string
     
     # Provenance information
-    source_file: str  # The ScrapedData file this was split from
     parent_name: str  # Name of the parent blueprint book
-    source_csv: Optional[str] = None  # Original CSV source
-    source_row: Optional[int] = None  # Original row in CSV
+    parent_file: Optional[str] = None  # Original file the ScrapedData came from.
+    parent_row: Optional[int] = None  #  Row, if it had one.
     
     # Enrichment data
     entities: dict[str, int] = Field(default_factory=dict)  # Counts of entities by type
     tech_level: Optional[int] = None  # Technology level required
     
-    # Matrix representation (could be a separate complex type)
-    matrix_repr: Optional[List[List[Any]]] = None
-    
     # Metadata and metrics
-    entity_count: Optional[int] = None  # Total number of entities
     area: Optional[dict[str, int]] = None  # Width and height
-    connections: Optional[int] = None  # Number of circuit connections
     creation_time: Optional[str] = None  # When this split was performed
     
     # Tags and categorization
     category: Optional[str] = None  # E.g., "production", "logistics", etc.
-    tags: List[str] = Field(default_factory=list)  # User-defined or auto-generated tags
+    tags: list[str] = Field(default_factory=list)  # User-defined or auto-generated tags
     
-    # Performance metrics (if applicable)
-    throughput: Optional[dict[str, float]] = None  # Estimated item throughput
-    power_consumption: Optional[float] = None  # Estimated power usage
-    
+
     def __init__(self, **data):
         super().__init__(**data)
         # Auto-calculate some fields if not provided
@@ -105,3 +133,9 @@ class BlueprintData(BaseModel):
         if self.creation_time is None:
             from datetime import datetime
             self.creation_time = datetime.now().isoformat()
+
+
+class BlueprintData(BaseModel):
+    # Data ex
+    label: str
+    description: str = ""

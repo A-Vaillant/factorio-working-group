@@ -22,7 +22,7 @@ from draftsman.utils import string_to_JSON
 
 # enrichment
 from enrichment import *
-from models import ScrapedData, ManifestEntry, DataManifest
+from models import ScrapedData, ScrapedCSVRow, ScrapedJSONFile, ManifestEntry, DataManifest
 from utils import calculate_file_hash, hash_bp_row
 
 
@@ -36,6 +36,19 @@ class PipelineConfig(luigi.Config):
     stage1_directory = luigi.Parameter(default=os.path.join(data_dir, 'stage1'))
     stage2_directory = luigi.Parameter(default=os.path.join(data_dir, 'stage2'))
 
+
+def parse_json(json_dict: Dict[str, Any],
+               json_filename: str="") -> List[ScrapedData]:
+    """ Takes a dictionary from a JSON file and either returns a singleton
+    list or an empty list, depending on success or not. """
+    if json_dict.get('data') is None:
+        return []
+    
+    processed_data = ScrapedJSONFile(
+        name='',
+        data=json_dict['data'],
+        source_file=os.paht.basename(json_filename),
+    )
 
 def parse_csv_row(row: Dict[str, Any], 
                  row_num: int,
