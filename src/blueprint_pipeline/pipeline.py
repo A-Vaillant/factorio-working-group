@@ -2,9 +2,7 @@
 pipeline.py
 
 An idempotent pipeline for processing Factorio blueprint CSVs
-using Luigi for orchestration.
-
-Author: A. Vaillant, Claude Opus 3.7 (April 2025)
+using Luigi for orchestration. Author: A. Vaillant, Claude Opus 3.7 (April 2025)
 """
 import sys
 import csv
@@ -32,19 +30,17 @@ csv.field_size_limit(sys.maxsize)
 
 
 # ==================== Configuration Parameters 
+data_dir="../../data"
 class PipelineConfig(luigi.Config):
-    source_directory = luigi.Parameter(default="../../data/raw")
-    output_directory = luigi.Parameter(default="../../data/processed")
+    raw_directory = luigi.Parameter(default=os.path.join(data_dir, 'raw'))
+    stage1_directory = luigi.Parameter(default=os.path.join(data_dir, 'stage1'))
+    stage2_directory = luigi.Parameter(default=os.path.join(data_dir, 'stage2'))
 
 
 def parse_csv_row(row: Dict[str, Any], 
                  row_num: int,
                  csv_file: str="",
                  filter_func: Callable = lambda x: True) -> List[ScrapedData]:
-    """Process a single CSV row and convert it to our data model.
-    
-    Instead, it just creates a data model from the CSV row.
-    """
     data_string = row.get('data', '')
     if not data_string:
         return []
@@ -79,15 +75,16 @@ class InputCSVFile(luigi.ExternalTask):
 class ProcessCSVFile(luigi.Task):
     """Process a single CSV file containing blueprint data."""
     file_path = luigi.Parameter()
-    output_dir = luigi.Parameter()
+    output_dir = luigi.Parameter(default=PipelineConfig().stage1_directory)
     
     def requires(self):
         return InputCSVFile(file_path=self.file_path)
     
     def output(self):
         # Output marker indicating this file was processed
-        file_hash = calculate_file_hash(self.file_path)
-        return luigi.LocalTarget(os.path.join(self.output_dir, f".processed_{file_hash}"))
+        # file_hash = calculate_file_hash(self.file_path)
+        file_name = os.path.basename(self.file_path)
+        return luigi.LocalTarget(os.path.join(self.output_dir, f".stage1_{file_name}"))
     
     def run(self):
         # Create output directory if it doesn't exist
@@ -119,10 +116,10 @@ class ProcessCSVFile(luigi.Task):
             outfile.write(f"Processed on: {datetime.now().isoformat()}")
 
 
-class ProcessAllCSVs(luigi.WrapperTask):
+class ProcessAllCSVs(luigi.Task):
     """Process all CSV files in the source directory."""
-    source_directory = luigi.Parameter(default=PipelineConfig().source_directory)
-    output_directory = luigi.Parameter(default=PipelineConfig().output_directory)
+    source_directory = luigi.Parameter(default=PipelineConfig().raw_directory)
+    output_directory = luigi.Parameter(default=PipelineConfig().stage1_directory)
     
     def requires(self):
         source_dir = Path(self.source_directory)
@@ -139,10 +136,31 @@ class ProcessAllCSVs(luigi.WrapperTask):
         return tasks
 
 
+class Stage2Processing(luigi.Task):
+    source_directory = luigi.Parameter(default=PipelineConfig().stage1_directory)
+    output_directory = luigi.Parameter(default=PipelineConfig().stage2_directory)
+
+    def requires(self):
+        # This task depends on Stage1Processing
+        return ProcessCSVFile(input_file=self.stage1_file.replace("stage1_", ""))
+    
+    def output(self):
+        file_name = os.path.basename(self.stage1_file)
+        return luigi.LocalTarget(os.path.join(self.output_dir, f"stage2_{file_name}"))
+    
+    def run(self):
+        # Stage 2 processing logic
+        os.makedirs(self.output_dir, exist_ok=True)
+        # Process data...
+        with self.output().open('w') as outfile:
+            # Write final processed data
+            pass
+
+
 class GenerateManifest(luigi.Task):
     """Generate a manifest file with metadata about all processed data entries."""
-    source_directory = luigi.Parameter(default=PipelineConfig().source_directory)
-    output_directory = luigi.Parameter(default=PipelineConfig().output_directory)
+    source_directory = luigi.Parameter(default=PipelineConfig().raw_directory)
+    output_directory = luigi.Parameter(default=PipelineConfig().stage1_directory)
     
     def requires(self):
         return ProcessAllCSVs(
