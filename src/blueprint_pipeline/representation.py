@@ -41,14 +41,13 @@ def blueprint_to_matrices(bp, grid_size=25):
         aa, bb = entity.tile_position, entity.tile_position + (entity.tile_width, entity.tile_height)
         
         # Determine which matrix to use based on entity type (using string comparison)
-        entity_type = entity.type
-        if "assembling-machine" in entity_type:
+        if entity.type == "assembling-machine":
             matrix = matrices["assemblers"]
-        elif "inserter" in entity_type:
+        elif entity.type == "inserter":
             matrix = matrices["inserters"]
-        elif any(belt_type in entity_type for belt_type in ["transport-belt", "splitter", "underground-belt"]):
+        elif entity.type in ["transport-belt", "splitter", "underground-belt"]:
             matrix = matrices["belts"]
-        elif any(pole_type in entity_type for pole_type in ["electric-pole", "big-electric-pole", "medium-electric-pole", "substation"]):
+        elif entity.type in ["electric-pole"]:
             matrix = matrices["electric_poles"]
         else:
             continue
