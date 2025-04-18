@@ -56,7 +56,7 @@ def get_page_links(bp_container, bp_links, base_url):
             bp_links.append(base_url + href)
 
 
-def get_info_from_pg(driver, bp_link, results):
+def get_info_from_pg(driver, bp_link, results, pg_num):
     print("Getting data from: " + bp_link )
     driver.get(bp_link)
     soup = BeautifulSoup(driver.page_source, "html.parser")
@@ -93,52 +93,43 @@ def get_info_from_pg(driver, bp_link, results):
         tag_texts = [tag.text.strip() for tag in tags]
 
 
+        result = {'name': str(bp_title),  
+                    'author': info_dict['User:'],
+                    'source': 'factorioblueprints.tech',
+                    'tags': tag_texts,
+                    'url': bp_link,
+                    'date': info_dict['Last updated:'],
+                    'data': str(blueprint_string)}
+
         if blueprint_string and len(blueprint_string) > 32000:
-            print("Blueprint string too long. Calling make_json")
-            make_json(driver, soup, bp_link, str(bp_title))
-            pass
+            print("Blueprint string too long. Making json file")
+            safe_name = bp_title.replace(" ", "_").replace("/", "_")
+            safe_name = "".join(c for c in safe_name if c.isalnum() or c in ('_', '-'))
+            filename = f"overflow_pg{pg_num}_{safe_name[:50]}.txt"  # limit name length
+
+            make_json(filename, result)
+            
         else: # if bp string <= 32000 char
-        # add data to list of results
-            results.append({'name': str(bp_title),  
-                            'author': info_dict['User:'],
-                            'source': 'factorioblueprints.tech',
-                            'tags': tag_texts,
-                            'url': bp_link,
-                            'date': info_dict['Last updated:'],
-                            'data': str(blueprint_string)})
+        # # add data to list of results
+            results.append(result)
             
     except Exception as e:
         print(f"Failed to extract data from {bp_link}: {e}")
         results.append({'name': bp_link, 'author': None, 'source': 'factorioblueprints.tech', 'tags': None, 'url': bp_link, 'date': None, 'data' : None})
     time.sleep(1)
 
-def make_json(driver, soup, bp_link, bp_title):
+def make_json(filename, bp_data):
     try:
-        # Wait until the button is clickable and click it
-        buttons = WebDriverWait(driver, 10).until(
-            EC.element_to_be_clickable((By.CSS_SELECTOR, ".css-14h2mzn:not(.primary)"))  # show json button class
-        )
-        buttons.click()
-
-        pre_tag = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, ".css-1ows65d")))
-
-        if pre_tag:
-            try:
-                json_data = json.loads(pre_tag.text)
-                # make safe file name for json
-                safe_name = bp_title.replace(" ", "_").replace("/", "_")
-                safe_name = safe_name[:45] + "_tag" + str(bp_link)[-3:]
-                safe_name = "".join(c for c in safe_name if c.isalnum() or c in ('_', '-'))
-                filename = os.path.join("factorio-tech_jsons", f"{safe_name}.json")
-                # write to json
-                with open(filename, "w", encoding="utf-8") as f:
-                    json.dump(json_data, f, ensure_ascii=False, indent=4)
-            except json.JSONDecodeError as e:
-                print("Failed to decode JSON:", e)
+        filename = os.path.join("", f"{filename}.json")
+        with open(filename, "w", encoding="utf-8") as f:
+            json.dump(bp_data, f, ensure_ascii=False, indent=4)
+        print("\tMade JSON for " + str(filename))
+        # num_jsons += 1
+        # print("Current number of JSONS: " + str(num_jsons))
+            
 
     except Exception as e:
-        print(f"Failed to extract data from {bp_link}: {e}")
+        print(f"Failed to extract data from {str(filename)}: {e}")
     time.sleep(1)
 
 def make_csv(results, pg_num):
@@ -197,7 +188,7 @@ while curr_pg <= last_iter:
     soup, bp_container = load_pg(driver, curr_pg, pg_url_no_num)
     get_page_links(bp_container, all_bp_links, base_url)
     for link in all_bp_links:
-        get_info_from_pg(driver, link, results)
+        get_info_from_pg(driver, link, results, curr_pg)
     make_csv(results, curr_pg)
     curr_pg += 1
 
