@@ -1,0 +1,9 @@
+{
+    "author": "A. Vaillant",
+    "source": "Factorio Working Group",
+    "tags": ["red science"],
+    "date": "2023-04-17",
+    "data_files": {
+        "Red Science Factories": "redsciencebook.txt"
+    }
+}
