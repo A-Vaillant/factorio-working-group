@@ -40,5 +40,6 @@ venv.bak/
 *.swp
 *.swo
 
-# Project specific
-scraped_data/
+.DS_Store
+*/.DS_Store
+*/*/.DS_Store
