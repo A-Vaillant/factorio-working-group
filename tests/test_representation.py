@@ -7,8 +7,8 @@ import sys
 from draftsman.blueprintable import get_blueprintable_from_string
 from draftsman.blueprintable import Blueprint
 
-from src.blueprint_pipeline.representation import blueprint_to_matrices
-from src.blueprint_pipeline.representation import trim_zero_edges
+from src.representation import blueprint_to_matrices
+from src.representation import trim_zero_edges
 
 
 class TestTrimZeroEdges(unittest.TestCase):
