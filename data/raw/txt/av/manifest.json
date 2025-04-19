@@ -4,6 +4,8 @@
     "tags": ["red science"],
     "date": "2023-04-17",
     "data_files": {
-        "Red Science Factories": "redsciencebook.txt"
+        "Red Science Factories": "redsciencebook.txt",
+        "3 Machine Factory": "3machine.txt",
+        "Powered 3 Machine Factory": "3machine_power.txt"
     }
 }
