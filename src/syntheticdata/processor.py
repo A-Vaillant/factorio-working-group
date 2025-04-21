@@ -118,5 +118,5 @@ def load_dataset(dataset_name: str='av-redscience',
         for (holepunched, ix, pos) in rs:
             # Map the factory to a matrix, then organize.
             hp_mat = blueprint_to_matrices(holepunched)
-            factory_tuples.append(((hp_mat, ix), (v_mat, pos)))
+            factory_tuples.append(((hp_mat, ix), (v_mat, np.array(pos._data))))
     return factory_tuples
