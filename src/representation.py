@@ -69,7 +69,9 @@ def bound_bp_by_entities(bbook: Blueprint):
     return left, top
 
 
-def blueprint_to_matrices(bp):
+
+def blueprint_to_matrices(bp, w=None, h=None,
+                          trim_topleft: bool=True):
     """
     Convert a Factorio blueprint to multiple binary matrices representing entity types.
     
@@ -80,32 +82,46 @@ def blueprint_to_matrices(bp):
         Dictionary of numpy arrays, one per entity type
     """
     # Find blueprint bounding box to center it
-    w, h = bp.get_dimensions()
+    if w is None or h is None:
+        w, h = bp.get_dimensions()
 
-    left, top = bound_bp_by_entities(bp)
-    bp.translate(-left, -top)
-    matrices = dict()
-    for k in ['assembler', 'inserter', 'belt', 'pole']:
-        matrices[k] = np.zeros((w+1, h+1), dtype=np.int8)
+    if trim_topleft:
+        left, top = bound_bp_by_entities(bp)
+        bp.translate(-left, -top)
+
+    channels = ['assembler', 'inserter', 'belt', 'pole']
+    matrices = np.zeros((w+1, h+1, len(channels)), dtype=np.int8)
 
     # Place entities in matrices
     for entity in bp.entities:
         key = None
+        width, height = None, None
         # Determine which matrix to use based on entity type (using string comparison)
         if entity.type == "assembling-machine":
-            key = "assembler"
+            key = channels.index("assembler")
+            width, height = 3, 3
         elif entity.type == "inserter":
-            key = "inserter"
+            key = channels.index("inserter")
         elif entity.type in ["transport-belt", "splitter", "underground-belt"]:
-            key = "belt"
+            key = channels.index("belt")
+            if entity.type == 'splitter':
+                if entity.direction in [0, 4]:
+                    width = 2
+                    height = 1
+                else:
+                    height = 2
+                    width = 1
         elif entity.type in ["electric-pole"]:
-            key = "pole"
+            key = channels.index("pole")
         else:
             continue
         
+        width = width or 1
+        height = height or 1
+
         left, top = entity.tile_position._data
-        right = left + entity.tile_width
-        bottom = top + entity.tile_height
-        matrices[key][left:right, top:bottom] = 1
+        right = left + width
+        bottom = top + height
+        matrices[left:right, top:bottom, key] = 1
     
     return matrices
