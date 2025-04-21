@@ -12,6 +12,7 @@ from draftsman.blueprintable import Blueprint, Blueprintable, get_blueprintable_
 
 from src.blueprint_pipeline.utils import map_entity_to_key
 from src.representation import blueprint_to_matrices
+from src.machinelearning import center_in_15x15
 
 data_root = Path('data')
 def recursive_blueprint_book_parse(bp_book: Blueprintable) -> list[Blueprint]:
@@ -107,16 +108,31 @@ def load_dataset(dataset_name: str='av-redscience',
     """ dataset_name: The name of a prepared dataset. 
 
     Right now, only does the redscience entity holepunch dataset.
+        Returns 4 arrays.
         Form: (4-channel grid, channel) -> (4-channel grid, x,y coordinate of new entity)
     """
     fl = FactoryLoader(datasets[dataset_name], **kwargs)
-    factory_tuples = []
+    Xs = []
+    y = []
+    y_pos = []
+    indices = []
     for k, v in fl.factories.items():
         ep = EntityPuncher(v)
         rs = ep.get_removal_sequences(ignore_electricity=True)
-        v_mat = blueprint_to_matrices(v)
+        try:
+            v_mat = center_in_15x15(blueprint_to_matrices(v))
+        except ValueError:
+            continue
+        # print(len(rs))
         for (holepunched, ix, pos) in rs:
             # Map the factory to a matrix, then organize.
-            hp_mat = blueprint_to_matrices(holepunched)
-            factory_tuples.append(((hp_mat, ix), (v_mat, np.array(pos._data))))
-    return factory_tuples
+            hp_mat = center_in_15x15(blueprint_to_matrices(holepunched))
+            Xs.append(hp_mat)
+            y.append(v_mat)
+            y_pos.append(pos._data)
+            indices.append(ix)
+            # np.append(Xs, hp_mat)
+            # np.append(y, v_mat)
+            # np.append(y_pos, np.array(pos._data))
+            # np.append(indices, ix)
+    return np.array(Xs), y, y_pos, np.array(indices)

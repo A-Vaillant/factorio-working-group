@@ -1,1 +1,1 @@
-from processor import load_dataset
+from src.syntheticdata.processor import load_dataset
