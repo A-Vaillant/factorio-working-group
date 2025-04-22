@@ -4,7 +4,65 @@ Takes a Blueprint object and returns something you can do some good old fashione
 
 import numpy as np
 import math
-from draftsman.blueprintable import Blueprint
+from draftsman.blueprintable import Blueprint, Blueprintable, get_blueprintable_from_JSON
+from draftsman.utils import string_to_JSON
+from dataclasses import dataclass
+from typing import Optional
+from functools import lru_cache
+
+import logging
+
+
+# You surely will not regret putting a global variable in your representation module.
+REPR_VERSION = 1
+
+
+class RepresentationError(ValueError):
+    """Raised when there's an issue with creating or maintaining a Factory representation."""
+    pass
+
+
+class Factory:
+    _bp: Optional[Blueprint]=None
+    json: dict
+    # matrix: Optional[np.array]=None
+
+    @classmethod
+    def from_blueprint(cls, input: Blueprint):
+        j = input.to_dict()
+        if 'blueprint' not in j:
+            raise RepresentationError("Passed in something that wasn't a blueprint.")
+        return Factory(_bp=input, json=j)
+
+    @classmethod
+    def from_str(cls, input: str):
+        j = string_to_JSON(input)
+        if 'blueprint' not in j:  # not a proper blueprint
+            if 'blueprint-book' in j:  # this is a BOOK
+                raise RepresentationError("Attempted to represent a blueprint book as a Factory.")
+            else:
+                logging.debug(j)
+                raise RepresentationError("Failed for an unknown issue.")
+        return Factory(json=j)
+
+    @property
+    def blueprint(self) -> Blueprint:
+        if self._bp is None:
+            bp = get_blueprintable_from_JSON(self.json)
+        return self._bp
+    
+    @lru_cache
+    def get_matrix(self, dims: tuple[int, int],
+                   repr_version: int=REPR_VERSION,
+                   **kwargs) -> np.array:
+        # Given a version, does some stuff. dims is w:h.
+        if repr_version > 0:
+            # Basic 4 channel opacity.
+            channels = ['assembler', 'inserter', 'belt', 'pole']
+            mx = blueprint_to_matrices(self.blueprint, dims[0], dims[1], **kwargs)
+        return mx
+
+
 
 
 def trim_zero_edges(matrix,
