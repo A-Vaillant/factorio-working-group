@@ -76,8 +76,7 @@ class TestBlueprintMatrices(unittest.TestCase):
     def test_simple_machine(self):
         """Test a simple machine blueprint"""
         blueprint_string = "0eJyd0s1qwzAMAOB30dketZuui497jTGGk4pOYCvBdsdCyLvPXsIohLDQm3+kT7LRCI27YR+IE5gRqO04gnkbIdKVrStnaegRDFBCDwLY+rJLwXLsu5Bkgy7BJID4gt9g1PQuADlRIpylJcPGiL5xxFfpbftJjFJlr+9iDu24VMrp8vB0EjDMi6xeKGA73x8Wd/jgm28wlFpi3GhoBevF3cHqB9g97R4fcdX/bnXnEkcMKZ+uRLXZqV6Jp12i3H78mnwuc/E7Q+Zu5AR8YYhzyouqzrU+V7quj7US4Gz+mhz9+hc9TT9q1eB9"
-        expected = {
-            "assembler": np.array(
+        expected = np.array([
                 [
                     [0, 0, 0, 0],
                     [1, 1, 1, 0],
@@ -85,10 +84,7 @@ class TestBlueprintMatrices(unittest.TestCase):
                     [1, 1, 1, 0],
                     [0, 0, 0, 0],
                     [0, 0, 0, 0],
-                ],
-                dtype=np.int8,
-            ),
-            "inserter": np.array(
+                ],            
                 [
                     [0, 1, 0, 0],
                     [0, 0, 0, 0],
@@ -97,9 +93,6 @@ class TestBlueprintMatrices(unittest.TestCase):
                     [0, 1, 0, 0],
                     [0, 0, 0, 0],
                 ],
-                dtype=np.int8,
-            ),
-            "belt": np.array(
                 [
                     [0, 0, 0, 0],
                     [0, 0, 0, 0],
@@ -108,9 +101,6 @@ class TestBlueprintMatrices(unittest.TestCase):
                     [0, 0, 0, 0],
                     [1, 1, 1, 0],
                 ],
-                dtype=np.int8,
-            ),
-            "pole": np.array(
                 [
                     [0, 0, 0, 0],
                     [0, 0, 0, 0],
@@ -118,15 +108,29 @@ class TestBlueprintMatrices(unittest.TestCase):
                     [0, 0, 0, 0],
                     [0, 0, 0, 0],
                     [0, 0, 0, 0],
-                ],
-                dtype=np.int8,
-            ),
-        }
-
+                ]
+        ])
         self._test_blueprint(blueprint_string, expected)
 
     def test_machine_with_poles(self):
         blueprint_string = "0eJydk91uhCAQhd9lrqFZXLf+XO5rNKZBd+JOgmgAmxrjuxeqaUyNrbt3MAzfOQwzI5Sqx86QdpCPQFWrLeRvI1iqtVQh5oYOIQdy2AADLZuwc0Zq27XG8RKVg4kB6Rt+Qi6mggFqR45wJi03pLXYlIp0zRtZ3UkjF57Xtdantjoo+ev89HJhMMwLT72RwWo+Py3c4V33TYkmaLFxx9AGHC3cA9joCewRu+dnuOJ/brzikrZonI9uiGLXabQhXg4R+f7jt8jXFdI2UimOymcbqnjXKvzD74EKJL4vkep72fYmNF1aPKrGH+iP9JdaUoSe/56PfDVODD7Q2LkcqYiTLEriKMvOmWCgpP92n339yZ6mL6cfKSI="
+        h = 7
+        w = 4
+        c = 4
+        
+        expected = np.zeroes((h,w,c), dtype=np.int8)
+        
+        a_pos = [(1, 0)]
+        
+        for ix, yx_pos in [a_pos, i_pos, b_pos, p_pos]:
+            if yx_pos == a_pos:
+                W = 3
+                H = 3
+            else:
+                W = 1
+                H = 1
+            for (y, x) in yx_pos:
+                expected[y:y+H, x:x+W, ix] = 1
         expected = {
             "assembler": np.array(
                 [
