@@ -33,8 +33,7 @@ csv.field_size_limit(sys.maxsize)
 data_dir="../../data"
 class PipelineConfig(luigi.Config):
     raw_directory = luigi.Parameter(default=os.path.join(data_dir, 'raw'))
-    stage1_directory = luigi.Parameter(default=os.path.join(data_dir, 'stage1'))
-    stage2_directory = luigi.Parameter(default=os.path.join(data_dir, 'stage2'))
+    processed_directory = luigi.Parameter(default=os.path.join(data_dir, 'processed'))
 
 
 def parse_json(json_dict: Dict[str, Any],

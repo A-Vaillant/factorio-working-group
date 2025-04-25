@@ -60,23 +60,21 @@ class TestBlueprintMatrices(unittest.TestCase):
         # self.result_matrices = result_matrices
 
         # Check that all expected keys exist
-        self.assertEqual(set(result_matrices.keys()), set(expected_matrices.keys()))
+        self.assertEqual(result_matrices.shape, expected_matrices.shape)
 
-        # Check each matrix
-        for key, expected_matrix in expected_matrices.items():
-            # Convert to numpy array if it's not already
-            expected = np.array(expected_matrix)
-            self.assertEqual(
-                result_matrices[key].shape, expected.shape, f"Shape mismatch for {key}"
-            )
-            np.testing.assert_array_equal(
-                result_matrices[key], expected, f"Values mismatch for {key}"
-            )
+        for i in range(expected_matrices.shape[2]):
+            # print(result_matrices[:,:,i])
+            # print(expected_matrices[:,:,i])
+            self.assertTrue(np.all(result_matrices[:,:,i] == expected_matrices[:,:,i]))
+
 
     def test_simple_machine(self):
         """Test a simple machine blueprint"""
         blueprint_string = "0eJyd0s1qwzAMAOB30dketZuui497jTGGk4pOYCvBdsdCyLvPXsIohLDQm3+kT7LRCI27YR+IE5gRqO04gnkbIdKVrStnaegRDFBCDwLY+rJLwXLsu5Bkgy7BJID4gt9g1PQuADlRIpylJcPGiL5xxFfpbftJjFJlr+9iDu24VMrp8vB0EjDMi6xeKGA73x8Wd/jgm28wlFpi3GhoBevF3cHqB9g97R4fcdX/bnXnEkcMKZ+uRLXZqV6Jp12i3H78mnwuc/E7Q+Zu5AR8YYhzyouqzrU+V7quj7US4Gz+mhz9+hc9TT9q1eB9"
-        expected = np.array([
+        h = 6
+        w = 4
+        c = 4
+        expected_arr = [
                 [
                     [0, 0, 0, 0],
                     [1, 1, 1, 0],
@@ -109,7 +107,11 @@ class TestBlueprintMatrices(unittest.TestCase):
                     [0, 0, 0, 0],
                     [0, 0, 0, 0],
                 ]
-        ])
+        ]
+        expected = np.zeros((h, w, c))
+        for ix, matrix in enumerate(expected_arr):
+            for jx, row in enumerate(matrix):
+                expected[jx, :, ix] = row
         self._test_blueprint(blueprint_string, expected)
 
     def test_machine_with_poles(self):
@@ -118,11 +120,13 @@ class TestBlueprintMatrices(unittest.TestCase):
         w = 4
         c = 4
         
-        expected = np.zeroes((h,w,c), dtype=np.int8)
+        expected = np.zeros((h,w,c), dtype=np.int8)
         
         a_pos = [(1, 0)]
-        
-        for ix, yx_pos in [a_pos, i_pos, b_pos, p_pos]:
+        i_pos = [(0, 1), (4, 1)]
+        b_pos = [(5, 0), (5, 1), (5, 2)]
+        p_pos = [(0, 2), (4, 0)]
+        for ix, yx_pos in enumerate([a_pos, i_pos, b_pos, p_pos]):
             if yx_pos == a_pos:
                 W = 3
                 H = 3
@@ -131,56 +135,6 @@ class TestBlueprintMatrices(unittest.TestCase):
                 H = 1
             for (y, x) in yx_pos:
                 expected[y:y+H, x:x+W, ix] = 1
-        expected = {
-            "assembler": np.array(
-                [
-                    [0, 0, 0, 0],
-                    [1, 1, 1, 0],
-                    [1, 1, 1, 0],
-                    [1, 1, 1, 0],
-                    [0, 0, 0, 0],
-                    [0, 0, 0, 0],
-                    [0, 0, 0, 0],
-                ],
-                dtype=np.int8,
-            ),
-            "inserter": np.array(
-                [
-                    [0, 1, 0, 0],
-                    [0, 0, 0, 0],
-                    [0, 0, 0, 0],
-                    [0, 0, 0, 0],
-                    [0, 1, 0, 0],
-                    [0, 0, 0, 0],
-                    [0, 0, 0, 0],
-                ],
-                dtype=np.int8,
-            ),
-            "belt": np.array(
-                [
-                    [0, 0, 0, 0],
-                    [0, 0, 0, 0],
-                    [0, 0, 0, 0],
-                    [0, 0, 0, 0],
-                    [0, 0, 0, 0],
-                    [1, 1, 1, 0],
-                    [0, 0, 0, 0],
-                ],
-                dtype=np.int8,
-            ),
-            "pole": np.array(
-                [
-                    [0, 0, 1, 0],
-                    [0, 0, 0, 0],
-                    [0, 0, 0, 0],
-                    [0, 0, 0, 0],
-                    [1, 0, 0, 0],
-                    [0, 0, 0, 0],
-                    [0, 0, 0, 0],
-                ],
-                dtype=np.int8,
-            ),
-        }
 
         self._test_blueprint(blueprint_string, expected)
 

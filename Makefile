@@ -5,4 +5,4 @@ tests:
 	python -m unittest discover -v tests
 
 testsu:
-	uv run python -m unittest discover -v tests
+	uv run python -m unittest discover -vv tests
