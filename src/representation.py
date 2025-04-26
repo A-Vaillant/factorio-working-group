@@ -17,7 +17,17 @@ REPR_VERSION = 1
 
 
 def recursive_json_parse(json_bp: dict) -> list[dict]:
-    pass  # TODO: Implement this.
+    if 'blueprint' in json_bp:
+        # it's a blueprint!
+        return [json_bp]
+    # it's not.
+    elif not 'blueprint_book' in json_bp:
+        # It's something ELSE. SKIP IT.
+        return []
+    blueprints = []
+    for bp in json_bp['blueprint_book']['blueprints']:
+        blueprints += recursive_json_parse(bp)
+    return [blueprints]
 
 def recursive_blueprint_book_parse(bp_book: Blueprintable) -> list[Blueprint]:
     # Reached a leaf.
