@@ -7,7 +7,7 @@ import sys
 from draftsman.blueprintable import get_blueprintable_from_string
 from draftsman.blueprintable import Blueprint
 
-from src.representation import blueprint_to_matrices
+from src.representation import blueprint_to_opacity_matrices
 from src.representation import trim_zero_edges
 
 
@@ -53,7 +53,7 @@ class TestBlueprintMatrices(unittest.TestCase):
     def _test_blueprint(self, blueprint_string, expected_matrices):
         """Helper method to test a blueprint against expected matrices"""
         blueprint = get_blueprintable_from_string(blueprint_string)
-        result_matrices = blueprint_to_matrices(blueprint)
+        result_matrices = blueprint_to_opacity_matrices(blueprint)
 
         # Store for verbose output
         # self.blueprint_string = blueprint_string

@@ -8,65 +8,8 @@ import numpy as np
 from pathlib import Path
 from copy import deepcopy
 
-from draftsman.blueprintable import Blueprint, Blueprintable, get_blueprintable_from_string
-from draftsman.utils import string_to_JSON
-from src.representation import blueprint_to_opacity_matrices, map_entity_to_key, center_in_N, Factory, recursive_json_parse
-
-
-
-data_root = Path('data')
-
-
-class FactoryLoader():
-    def __init__(self, raw_data_src,
-                 update_direction: bool=True):
-        # We're gonna use raw/txt/av here.
-        loading_root = data_root / raw_data_src
-        self.factories = dict()
-        if 'txt' in str(raw_data_src):  # Text loader.
-            manifile = loading_root / Path('manifest.json')
-            if not manifile.exists():
-                raise FileExistsError("SCREAMING!!!!!!!!!!  ")
-            
-            with manifile.open() as mf:
-                manidata = json.load(mf)
-            for k, v in manidata['data_files'].items():
-                with (loading_root / v).open() as bfile:
-                    v = string_to_JSON(bfile.read())
-                self.update_factories(k, v)
-        elif 'csv' in str(raw_data_src):  # csv loader
-            ...
-            # TODO: Implement this.
-        elif 'json' in str(raw_data_src):  # json loader
-            for jsonfile in loading_root.glob("*.json"):
-                k = jsonfile.name[:25]  # truncate the name for no reason
-                with jsonfile.open() as jf:
-                    info = json.load(jf)
-                    v = string_to_JSON(info['data'])
-                self.update_factories(k, v)
-        else:
-            raise FileNotFoundError("Only works for blueprint packages.")
-        
-        # if update_direction:  # For 1.0 compat.
-        #     for factory in iter(self):
-        #         for e in factory.entities:
-        #             try:
-        #                 e.direction *= 2
-        #             except AttributeError:
-        #                 pass
-   
-    def update_factories(self, k: str,
-                         v: dict):
-        vs = recursive_json_parse(v)
-        for ix, v in enumerate(vs):
-            self.factories[f"{k}-{ix}"] = Factory(json=v)
-        
-    def __iter__(self):
-        # Lets you iterate through the Blueprints by just iterating over the Loader.
-        return iter(self.factories.values())
-    
-    def random_sample(self):
-        return random.choice(list(self.factories.values()))
+from src.pipeline import FactoryLoader
+from src.representation import blueprint_to_opacity_matrices, map_entity_to_key, center_in_N, Factory
     
 
 class EntityPuncher():
@@ -99,19 +42,22 @@ class EntityPuncher():
         return root_sequence
     
 
-# In the future, we'll be able to load from a processed dataset
-# which will have a lot of the stuff already stored.
+# TODO: Move this.
 datasets = {
     'av-redscience': 'raw/txt/av',
     'factorio-tech-json': 'raw/json/factorio-tech',
     'factorio-tech': 'raw/csv/factorio-tech',
-    'factorio-codex': 'raw/csv/factorio-codex'
+    'factorio-codex': 'raw/csv/factorio-codex',
+    'idan': 'raw/csv/idan_blueprints.csv',
 }
 
 def load_dataset(dataset_name: str='av-redscience',
                   **kwargs):
     """ dataset_name: The name of a prepared dataset. 
     """
+    return FactoryLoader(datasets[dataset_name])
+    
+def load_training_data(dataset_name, **kwargs):
     fl = FactoryLoader(datasets[dataset_name], **kwargs)
     Xs = []
     y = []

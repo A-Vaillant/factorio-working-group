@@ -27,7 +27,7 @@ def recursive_json_parse(json_bp: dict) -> list[dict]:
     blueprints = []
     for bp in json_bp['blueprint_book']['blueprints']:
         blueprints += recursive_json_parse(bp)
-    return [blueprints]
+    return blueprints
 
 def recursive_blueprint_book_parse(bp_book: Blueprintable) -> list[Blueprint]:
     # Reached a leaf.
@@ -98,9 +98,10 @@ class RepresentationError(ValueError):
     pass
 
 
+@dataclass
 class Factory:
-    _bp: Optional[Blueprint]=None
     json: dict
+    _bp: Optional[Blueprint]=None
     # matrix: Optional[np.array]=None
 
     @classmethod
@@ -119,8 +120,8 @@ class Factory:
             else:
                 logging.debug(j)
                 raise RepresentationError("Failed for an unknown issue.")
-        return Factory(json=j)
-    
+        return Factory(json=j)        
+        
     # note: you can just do list[cls] in Python 3.10+. a thing to consider in setting dependencies.
     @classmethod
     def from_blueprintable(cls, input: str) -> list["Factory"]:
