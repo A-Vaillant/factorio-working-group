@@ -1,41 +1,10 @@
 import numpy as np
+from src.representation import center_in_N
 
-def center_in_15x15(matrix):
-    """
-    Center a matrix of any size within a 15x15 matrix.
-    
-    Args:
-        matrix: Input numpy array of shape (H, W) or (H, W, C)
-    
-    Returns:
-        centered_matrix: 15x15 matrix with the input matrix centered
-    """
-    n = 20
-    # Get input matrix dimensions
-    if matrix.ndim == 2:
-        h, w = matrix.shape
-        c = 1
-        matrix = matrix.reshape(h, w, 1)
-    else:
-        h, w, c = matrix.shape
-    
-    # Create empty 15x15 matrix
-    if c == 1:
-        centered_matrix = np.zeros((n, n))
-    else:
-        centered_matrix = np.zeros((n, n, c))
-    
-    # Calculate start positions for centering
-    start_h = (n - h) // 2
-    start_w = (n - w) // 2
-    
-    # Place the original matrix in the center
-    if c == 1:
-        centered_matrix[start_h:start_h+h, start_w:start_w+w] = matrix.reshape(h, w)
-    else:
-        centered_matrix[start_h:start_h+h, start_w:start_w+w, :] = matrix
-    
-    return np.transpose(centered_matrix, (2, 0, 1))
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
 
 # Example usage
 def test_centering():
@@ -48,7 +17,7 @@ def test_centering():
     ]
     
     for i, mat in enumerate(matrices):
-        centered = center_in_15x15(mat)
+        centered = center_in_N(mat, N=15)
         print(f"Original shape: {mat.shape}, Centered shape: {centered.shape}")
         
         # Visualize the result for 2D matrices
@@ -61,18 +30,16 @@ def test_centering():
         print("-" * 30)
 
 
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-
-class SophisticatedCNN(nn.Module):
-    def __init__(self, in_channels=4, hidden_dim=64, output_channels=1):
-        super(SophisticatedCNN, self).__init__()
+class FactoryAutoencoder(nn.Module):
+    def __init__(self, c: int, h: int, w: int,
+                 hidden_dim=64, output_channels=1):
+        super(FactoryAutoencoder, self).__init__()
         
-        self.input_size = 20
-        # Encoder for processing the 4-channel input
+        self.input_size = w  # Assuming that w = h.
+
+        # Encoder for processing the N-channel input
         self.encoder = nn.Sequential(
-            nn.Conv2d(in_channels, hidden_dim, kernel_size=3, padding=1),
+            nn.Conv2d(c, hidden_dim, kernel_size=3, padding=1),
             nn.BatchNorm2d(hidden_dim),
             nn.ReLU(),
             nn.Conv2d(hidden_dim, hidden_dim*2, kernel_size=3, padding=1),
@@ -81,7 +48,7 @@ class SophisticatedCNN(nn.Module):
         )
         
         # Index embedding
-        self.index_embedding = nn.Embedding(num_embeddings=100, embedding_dim=32)  # Adjust num_embeddings based on your index range
+        self.index_embedding = nn.Embedding(num_embeddings=100, embedding_dim=32)
         self.index_projection = nn.Linear(32, hidden_dim*2)
         
         # Spatial attention mechanism to focus on relevant positions
@@ -102,20 +69,11 @@ class SophisticatedCNN(nn.Module):
             nn.ReLU(),
             nn.Conv2d(hidden_dim, output_channels, kernel_size=1)
         )
-        
-        # Position prediction branch
-        self.position_predictor = nn.Sequential(
-            nn.AdaptiveAvgPool2d(1),
-            nn.Flatten(),
-            nn.Linear(hidden_dim*2, 256),
-            nn.ReLU(),
-            nn.Linear(256, 2)  # Outputs x, y coordinates
-        )
     
     def forward(self, x, index):
         batch_size, _, H, W = x.shape
         
-        # Process the 4-channel matrix
+        # Process the N-channel matrix
         features = self.encoder(x)
         
         # Process the index and broadcast to feature map dimensions
@@ -133,15 +91,12 @@ class SophisticatedCNN(nn.Module):
         # Generate output matrix
         output_matrix = self.decoder(attended_features)
         
-        # Predict position point
-        position = self.position_predictor(combined_features)
-        
-        return output_matrix, position, attention_map
+        return output_matrix, attention_map
 
-# Example usage
+
 def train_and_test_model():
     # Initialize model
-    model = SophisticatedCNN()
+    model = FactoryAutoencoder()
     
     # Sample input
     batch_size = 8

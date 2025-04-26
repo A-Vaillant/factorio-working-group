@@ -4,6 +4,7 @@ utils.py
 Just some extra stuff.
 """
 import hashlib
+from draftsman.blueprintable import Blueprint, Blueprintable
 
 
 def calculate_file_hash(filename: str) -> str:
@@ -18,24 +19,3 @@ def calculate_file_hash(filename: str) -> str:
 def hash_bp_row(bp_string):
     """Hash a blueprint string to generate a unique filename."""
     return hashlib.md5(bp_string.encode()).hexdigest()[:10]
-
-def map_entity_to_key(entity) -> str:
-    key = None
-    # Determine which matrix to use based on entity type (using string comparison)
-    if entity.type == "assembling-machine":
-        key = "assembler"
-    elif entity.type == "inserter":
-        key = "inserter"
-    elif entity.type in ["transport-belt", "splitter", "underground-belt"]:
-        key = "belt"
-    elif entity.type in ["electric-pole"]:
-        key = "pole"
-    else:
-        pass
-    return key
-
-
-def visualize_multichannel(matrix_dict):
-    for k, v in matrix_dict.items():
-        print(f"channel {k}")
-        print(v.T)

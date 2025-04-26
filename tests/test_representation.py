@@ -138,6 +138,11 @@ class TestBlueprintMatrices(unittest.TestCase):
 
         self._test_blueprint(blueprint_string, expected)
 
+class TestFactory(unittest.TestCase):
+    def setUp(self):
+        # self.testing_factory = 
+        ...
+
 
 if __name__ == "__main__":
     unittest.main()

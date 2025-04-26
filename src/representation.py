@@ -4,7 +4,7 @@ Takes a Blueprint object and returns something you can do some good old fashione
 
 import numpy as np
 import math
-from draftsman.blueprintable import Blueprint, Blueprintable, get_blueprintable_from_JSON
+from draftsman.blueprintable import Blueprint, Blueprintable, get_blueprintable_from_JSON, get_blueprintable_from_string
 from draftsman.utils import string_to_JSON
 from dataclasses import dataclass
 from typing import Optional
@@ -12,10 +12,76 @@ from functools import lru_cache
 
 import logging
 
-
 # You surely will not regret putting a global variable in your representation module.
 REPR_VERSION = 1
 
+
+def recursive_json_parse(json_bp: dict) -> list[dict]:
+    pass  # TODO: Implement this.
+
+def recursive_blueprint_book_parse(bp_book: Blueprintable) -> list[Blueprint]:
+    # Reached a leaf.
+    if isinstance(bp_book, Blueprint):
+        return [bp_book]
+
+    blueprints = []
+    for bp_node in bp_book.blueprints:
+        blueprints += recursive_blueprint_book_parse(bp_node)
+    return blueprints
+
+def center_in_N(matrix, N: int = 15) -> np.ndarray[np.ndarray]:
+    """
+    Center a matrix of any size within an NxN matrix (numpy array) and converts
+    it to (C, H, W).
+    (Should be two separate functions.)
+    
+    Args:
+        matrix: Input numpy array of shape (H, W) or (H, W, C)
+    
+    Returns:
+        centered_matrix: NxN matrix with the input matrix centered, of shape (C, H, W).
+    """
+    # Get input matrix dimensions
+    if matrix.ndim == 2:
+        h, w = matrix.shape
+        c = 1
+        matrix = matrix.reshape(h, w, 1)
+    else:
+        h, w, c = matrix.shape
+    
+    # Create empty NxN matrix
+    if c == 1:
+        centered_matrix = np.zeros((N, N))
+    else:
+        centered_matrix = np.zeros((N, N, c))
+    
+    # Calculate start positions for centering
+    start_h = (N - h) // 2
+    start_w = (N - w) // 2
+    
+    # Place the original matrix in the center
+    if c == 1:
+        centered_matrix[start_h:start_h+h, start_w:start_w+w] = matrix.reshape(h, w)
+    else:
+        centered_matrix[start_h:start_h+h, start_w:start_w+w, :] = matrix
+    
+    # 
+    return np.transpose(centered_matrix, (2, 0, 1))
+
+def map_entity_to_key(entity) -> str:
+    key = None
+    # Determine which matrix to use based on entity type (using string comparison)
+    if entity.type == "assembling-machine":
+        key = "assembler"
+    elif entity.type == "inserter":
+        key = "inserter"
+    elif entity.type in ["transport-belt", "splitter", "underground-belt"]:
+        key = "belt"
+    elif entity.type in ["electric-pole"]:
+        key = "pole"
+    else:
+        pass
+    return key
 
 class RepresentationError(ValueError):
     """Raised when there's an issue with creating or maintaining a Factory representation."""
@@ -44,11 +110,19 @@ class Factory:
                 logging.debug(j)
                 raise RepresentationError("Failed for an unknown issue.")
         return Factory(json=j)
+    
+    # note: you can just do list[cls] in Python 3.10+. a thing to consider in setting dependencies.
+    @classmethod
+    def from_blueprintable(cls, input: str) -> list["Factory"]:
+        # j = string_to_JSON(input)
+        j = get_blueprintable_from_string(input)  # Blueprintable
+        j_s = recursive_blueprint_book_parse(j)   # list[Blueprint]
+        return [cls.from_blueprint(j_) for j_ in j_s]  # Creates a list of Factories.
 
     @property
     def blueprint(self) -> Blueprint:
         if self._bp is None:
-            bp = get_blueprintable_from_JSON(self.json)
+            self._bp = get_blueprintable_from_JSON(self.json)
         return self._bp
     
     @lru_cache
@@ -56,13 +130,14 @@ class Factory:
                    repr_version: int=REPR_VERSION,
                    **kwargs) -> np.array:
         # Given a version, does some stuff. dims is w:h.
-        if repr_version > 0:
+        if repr_version >= 1:
             # Basic 4 channel opacity.
             channels = ['assembler', 'inserter', 'belt', 'pole']
-            mx = blueprint_to_matrices(self.blueprint, dims[0], dims[1], **kwargs)
+            mx = blueprint_to_opacity_matrices(self.blueprint, dims[0], dims[1], **kwargs)
+        elif repr_version >= 2:
+            # Opacity, power coverage, recipes, directionality.
+            mx = None
         return mx
-
-
 
 
 def trim_zero_edges(matrix,
@@ -126,10 +201,20 @@ def bound_bp_by_entities(bbook: Blueprint):
         top = min(top, m.tile_position._data[1])
     return left, top
 
+def bound_bp_by_json(jsf: dict):
+    """Returns the top-left most point that defines the minimal
+    rectangle. In a compacted matrix, this returns (0,0).
 
+    Args:
+        jsf (dict): The JSON representation of a Factory.
+    """
+    left = 100
+    top = 100
+    raise NotImplementedError("Have not implemented this function.")
+    pass
 
-def blueprint_to_matrices(bp, w=None, h=None,
-                          trim_topleft: bool=True):
+def blueprint_to_opacity_matrices(bp: Blueprint, w=None, h=None,
+                                  trim_topleft: bool=True):
     """
     Convert a Factorio blueprint to multiple binary matrices representing entity types.
     

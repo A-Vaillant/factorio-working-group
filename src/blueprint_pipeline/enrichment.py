@@ -5,24 +5,12 @@ A variety of functions that take ScrapedData and return additional fields.
 
 Author: A. Vaillant (April 2025)
 """
-from pathlib import Path
-from draftsman.blueprintable import Blueprintable, Blueprint
 import csv, json
+from pathlib import Path
+from collections import Counter
 
 
-# We want to just hand back strings to our intake classes, so write something
-# that makes this doable.
-# For each row, we pass its data to Draftsman, which returns a way to
-# split the data across multiple JSON files.
-def recursive_blueprint_book_parse(bp_book: Blueprintable) -> list[Blueprint]:
-    # Reached a leaf.
-    if isinstance(Blueprint, bp_book):
-        return [bp_book]
-
-    blueprints = []
-    for bp_node in bp_book.blueprints:
-        blueprints += recursive_blueprint_book_parse(bp_node)
-    return blueprints
+from draftsman.blueprintable import Blueprintable, Blueprint
 
 
 def quantify_entities(bp: Blueprint, granularity: int = 5) -> dict[str, int]:

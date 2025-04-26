@@ -10,20 +10,10 @@ from copy import deepcopy
 
 from draftsman.blueprintable import Blueprint, Blueprintable, get_blueprintable_from_string
 
-from src.blueprint_pipeline.utils import map_entity_to_key
-from src.representation import blueprint_to_matrices
+from src.representation import blueprint_to_opacity_matrices, recursive_blueprint_book_parse, map_entity_to_key
 from src.machinelearning import center_in_15x15
 
 data_root = Path('data')
-def recursive_blueprint_book_parse(bp_book: Blueprintable) -> list[Blueprint]:
-    # Reached a leaf.
-    if isinstance(bp_book, Blueprint):
-        return [bp_book]
-
-    blueprints = []
-    for bp_node in bp_book.blueprints:
-        blueprints += recursive_blueprint_book_parse(bp_node)
-    return blueprints
 
 
 class FactoryLoader():
@@ -31,33 +21,39 @@ class FactoryLoader():
                  update_direction: bool=True):
         # We're gonna use raw/txt/av here.
         loading_root = data_root / raw_data_src
-        if 'txt' in str(raw_data_src):
+        self.factories = dict()
+        if 'txt' in str(raw_data_src):  # Text loader.
             manifile = loading_root / Path('manifest.json')
             if not manifile.exists():
                 raise FileExistsError("SCREAMING!!!!!!!!!!  ")
             
             with manifile.open() as mf:
                 manidata = json.load(mf)
+            for k, v in manidata['data_files'].items():
+                with (loading_root / v).open() as bfile:
+                    v = get_blueprintable_from_string(bfile.read())
+                if isinstance(v, Blueprint):
+                    self.factories[k] = v
+                    continue
+                vs = recursive_blueprint_book_parse(v)
+                for ix, v in enumerate(vs):
+                    self.factories[f"{k}-{ix}"] = v
+            if update_direction:  # For 1.0 compat.
+                for factory in iter(self):
+                    for e in factory.entities:
+                        try:
+                            e.direction *= 2
+                        except AttributeError:
+                            pass
+        elif 'csv' in str(raw_data_src):  # csv loader
+            pass
+        elif 'json' in str(raw_data_src):  # json loader
+            pass
         else:
             raise FileNotFoundError("Only works for blueprint packages.")
         
-        self.factories = dict()
-        for k, v in manidata['data_files'].items():
-            with (loading_root / v).open() as bfile:
-                v = get_blueprintable_from_string(bfile.read())
-            if isinstance(v, Blueprint):
-                self.factories[k] = v
-                continue
-            vs = recursive_blueprint_book_parse(v)
-            for ix, v in enumerate(vs):
-                self.factories[f"{k}-{ix}"] = v
-        if update_direction:  # For 1.0 compat.
-            for factory in iter(self):
-                for e in factory.entities:
-                    try:
-                        e.direction *= 2
-                    except AttributeError:
-                        pass
+        
+
 
     def __iter__(self):
         # Lets you iterate through the Blueprints by just iterating over the Loader.
@@ -120,13 +116,13 @@ def load_dataset(dataset_name: str='av-redscience',
         ep = EntityPuncher(v)
         rs = ep.get_removal_sequences(ignore_electricity=True)
         try:
-            v_mat = center_in_15x15(blueprint_to_matrices(v))
+            v_mat = center_in_15x15(blueprint_to_opacity_matrices(v))
         except ValueError:
             continue
         # print(len(rs))
         for (holepunched, ix, pos) in rs:
             # Map the factory to a matrix, then organize.
-            hp_mat = center_in_15x15(blueprint_to_matrices(holepunched))
+            hp_mat = center_in_15x15(blueprint_to_opacity_matrices(holepunched))
             Xs.append(hp_mat)
             y.append(v_mat)
             y_pos.append(pos._data)
