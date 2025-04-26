@@ -59,7 +59,7 @@ class FactoryLoader():
                          v: dict):
         vs = recursive_json_parse(v)
         for ix, v in enumerate(vs):
-            self.factories[f"{k}-{ix}"] = v
+            self.factories[f"{k}-{ix}"] = Factory(json=v)
         
     def __iter__(self):
         # Lets you iterate through the Blueprints by just iterating over the Loader.
