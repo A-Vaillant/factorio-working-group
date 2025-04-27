@@ -6,93 +6,99 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-# Example usage
-def test_centering():
-    # Test with different sized matrices
-    matrices = [
-        np.ones((3, 3)),                # 3x3 matrix
-        np.ones((5, 7)),                # 5x7 matrix
-        np.ones((10, 8)),               # 10x8 matrix
-        np.ones((3, 3, 4))              # 3x3 matrix with 4 channels
-    ]
-    
-    for i, mat in enumerate(matrices):
-        centered = center_in_N(mat, N=15)
-        print(f"Original shape: {mat.shape}, Centered shape: {centered.shape}")
-        
-        # Visualize the result for 2D matrices
-        if mat.ndim == 2 or (mat.ndim == 3 and mat.shape[2] == 1):
-            print(f"Center positions where matrix was placed:")
-            binary_mask = np.where(centered > 0, 1, 0)
-            if binary_mask.ndim == 3:
-                binary_mask = binary_mask[:,:,0]
-            print(binary_mask.astype(int))
-        print("-" * 30)
+
+
 
 
 class FactoryAutoencoder(nn.Module):
     def __init__(self, c: int, h: int, w: int,
-                 hidden_dim=64, output_channels=1):
+                 hidden_dim=64, output_channels=1,
+                 max_indices=100, embedding_dim=32):
         super(FactoryAutoencoder, self).__init__()
         
-        self.input_size = w  # Assuming that w = h.
-
-        # Encoder for processing the N-channel input
+        self.use_index_embedding = embedding_dim > 0
+        self.h, self.w = h, w
+        
+        # Encoder with dimensionality reduction
         self.encoder = nn.Sequential(
             nn.Conv2d(c, hidden_dim, kernel_size=3, padding=1),
             nn.BatchNorm2d(hidden_dim),
             nn.ReLU(),
+            nn.MaxPool2d(2),  # Reduce spatial dimensions
             nn.Conv2d(hidden_dim, hidden_dim*2, kernel_size=3, padding=1),
             nn.BatchNorm2d(hidden_dim*2),
             nn.ReLU(),
         )
         
-        # Index embedding
-        self.index_embedding = nn.Embedding(num_embeddings=100, embedding_dim=32)
-        self.index_projection = nn.Linear(32, hidden_dim*2)
+        # Store dimensions after pooling
+        self.encoded_h, self.encoded_w = h // 2, w // 2
         
-        # Spatial attention mechanism to focus on relevant positions
-        self.spatial_attention = nn.Sequential(
-            nn.Conv2d(hidden_dim*2, hidden_dim, kernel_size=1),
-            nn.ReLU(),
-            nn.Conv2d(hidden_dim, 1, kernel_size=1),
-            nn.Sigmoid()
-        )
+        if self.use_index_embedding:
+            # Index embedding with configurable dimensions
+            self.index_embedding = nn.Embedding(num_embeddings=max_indices, embedding_dim=embedding_dim)
+            self.index_projection = nn.Linear(embedding_dim, hidden_dim*2)
+            
+            # Spatial attention mechanism
+            self.spatial_attention = nn.Sequential(
+                nn.Conv2d(hidden_dim*2, hidden_dim, kernel_size=1),
+                nn.ReLU(),
+                nn.Conv2d(hidden_dim, 1, kernel_size=1),
+                nn.Sigmoid()
+            )
         
-        # Decoder for generating the output matrix
+        # Decoder with upsampling to match encoder's reduction
         self.decoder = nn.Sequential(
             nn.Conv2d(hidden_dim*2, hidden_dim*2, kernel_size=3, padding=1),
             nn.BatchNorm2d(hidden_dim*2),
             nn.ReLU(),
+            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),  # Match encoder's pooling
             nn.Conv2d(hidden_dim*2, hidden_dim, kernel_size=3, padding=1),
             nn.BatchNorm2d(hidden_dim),
             nn.ReLU(),
             nn.Conv2d(hidden_dim, output_channels, kernel_size=1)
         )
     
-    def forward(self, x, index):
-        batch_size, _, H, W = x.shape
+    def get_embedding(self, x, index=None):
+        """Get embeddings suitable for Siamese networks"""
+        encoded = self.encoder(x)
         
-        # Process the N-channel matrix
-        features = self.encoder(x)
+        if self.use_index_embedding and index is not None:
+            idx_emb = self.index_embedding(index)
+            idx_proj = self.index_projection(idx_emb)
+            b = x.size(0)
+            idx_proj = idx_proj.view(b, -1, 1, 1).expand(-1, -1, self.encoded_h, self.encoded_w)
+            
+            attention = self.spatial_attention(encoded)
+            encoded = encoded * attention + idx_proj * (1 - attention)
+            
+        # Global pooling for fixed-size representation
+        global_features = F.adaptive_max_pool2d(encoded, 1).squeeze(-1).squeeze(-1)
+        return global_features
+    
+    def get_normalized_embedding(self, x, index=None):
+        """Get L2-normalized embeddings for cosine similarity"""
+        emb = self.get_embedding(x, index)
+        return F.normalize(emb, p=2, dim=1)
+    
+    def forward(self, x, index=None):
+        """Full autoencoder forward pass"""
+        encoded = self.encoder(x)
         
-        # Process the index and broadcast to feature map dimensions
-        index_embedding = self.index_embedding(index)  # [B, 32]
-        index_features = self.index_projection(index_embedding)  # [B, hidden_dim*2]
-        index_features = index_features.view(batch_size, -1, 1, 1).expand(-1, -1, H, W)
+        if self.use_index_embedding and index is not None:
+            # Process index embedding
+            idx_emb = self.index_embedding(index)
+            idx_proj = self.index_projection(idx_emb)
+            b = x.size(0)
+            idx_proj = idx_proj.view(b, -1, 1, 1).expand(-1, -1, self.encoded_h, self.encoded_w)
+            
+            # Apply attention mechanism
+            attention = self.spatial_attention(encoded)
+            encoded = encoded * attention + idx_proj * (1 - attention)
         
-        # Combine features with index information using element-wise multiplication
-        combined_features = features * index_features
-        
-        # Compute spatial attention map
-        attention_map = self.spatial_attention(combined_features)
-        attended_features = combined_features * attention_map
-        
-        # Generate output matrix
-        output_matrix = self.decoder(attended_features)
-        
-        return output_matrix, attention_map
-
+        # Decode to get output
+        decoded = self.decoder(encoded)
+        return decoded
+    
 
 def train_and_test_model():
     # Initialize model

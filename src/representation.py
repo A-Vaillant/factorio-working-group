@@ -13,7 +13,7 @@ from functools import lru_cache
 import logging
 
 # You surely will not regret putting a global variable in your representation module.
-REPR_VERSION = 1
+REPR_VERSION = 2
 
 
 def recursive_json_parse(json_bp: dict) -> list[dict]:
@@ -147,7 +147,7 @@ class Factory:
             mx = blueprint_to_opacity_matrices(self.blueprint, dims[0], dims[1], **kwargs)
         elif repr_version >= 2:
             # Opacity, power coverage, recipes, directionality.
-            mx = None
+            opacity_mx = json_to_opacity_matrices(self.json, dims[0], dims[1], **kwargs)
         return mx
 
 
