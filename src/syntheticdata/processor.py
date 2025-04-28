@@ -5,14 +5,65 @@ processor.py
 """
 import json, random
 import numpy as np
+import logging
 from pathlib import Path
 from copy import deepcopy
 
 from src.pipeline import FactoryLoader
 from src.representation import blueprint_to_opacity_matrices, map_entity_to_key, center_in_N, Factory
-    
+
+
+def make_rotations(matrix, hwc=True):
+    # Assumption: Matrix is in HWC form.
+    rotations = []
+    seen = set()
+
+    # hwc is numpy default, chw is torch tensor default
+    if hwc:
+        axes = (0, 1)
+    else:
+        axes = (1, 2)
+    for i in range(1, 4):
+        rotated = np.rot90(matrix, k=i, axes=axes)  # Rotate on (H, W)
+        key = rotated.tobytes()
+        if key not in seen:
+            seen.add(key)
+            rotations.append(rotated)
+        else:
+            logging.info(f"Rotation {i * 90}° is not unique, skipping.")
+
+    return rotations
+
+
+def make_translations(matrix, count=5):
+    c, h, w = matrix.shape  # NOTE: This assumes CxHxW, which is not what we use by default!
+    # We probably don't need to use this, though, since CNNs are already good at translation invariance.
+    pad = 2
+    padded = np.pad(matrix, ((0, 0), (pad, pad), (pad, pad)), mode='constant')
+    translations = []
+    seen = set()
+
+    for dx in range(-pad, pad + 1):
+        for dy in range(-pad, pad + 1):
+            if dx == 0 and dy == 0:
+                continue
+            shifted = np.zeros_like(padded)
+            shifted[:, pad+dy:pad+dy+h, pad+dx:pad+dx+w] = matrix
+            key = shifted.tobytes()
+            if key not in seen:
+                seen.add(key)
+                translations.append(shifted)
+            if len(translations) >= count:
+                break
+        if len(translations) >= count:
+            break
+
+    if len(translations) < count:
+        logging.info(f"Only generated {len(translations)} unique translations out of requested {count}.")
+
 
 class EntityPuncher():
+    # Transforms.
     channels = ('assembler', 'inserter', 'belt', 'pole')
 
     def __init__(self, factory):

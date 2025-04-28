@@ -279,3 +279,82 @@ def blueprint_to_opacity_matrices(bp: Blueprint, w=None, h=None,
         matrices[left:right, top:bottom, key] = 1
     
     return matrices
+
+
+# Define the index mapping.
+from draftsman.data import entities
+
+inserter_index = {k: ix+1 for ix, k in enumerate(entities.inserters)}
+belt_index = {
+    "transport-belt": 1,
+    "fast-transport-belt": 2,
+    "express-transport-belt": 3,
+    "turbo-transport-belt": 4,
+}
+underground_index = {
+    "underground-belt": 1,
+    "fast-underground-belt": 2,
+    "express-underground-belt": 3,
+    "turbo-underground-belt": 4,
+}
+splitter_index = {
+    "splitter": 1,
+    "fast-splitter": 2,
+    "express-splitter": 3,
+    "turbo-splitter": 4,
+}
+belt_index.update(underground_index)
+belt_index.update(splitter_index)
+
+# Belts have the following form:
+# [tier-]kind-
+def json_to_6channel_matrix(js: dict, w=None, h=None,
+                                  trim_topleft: bool=True):
+    # Creates opacity matrices AND directionality/electrical coverage matrix.
+    entities = js['blueprint']['entities']
+    channels = ['assembler', 'inserter', 'belt', 'pole']
+    if w is None or h is None:
+        pass  # break
+        # w, h = bp.get_dimensions()
+
+    if trim_topleft:
+        left, top = bound_bp_by_json(js)
+        for entity in entities:
+            entity['position'][0] -= left
+            entity['position'][1] -= top
+
+    matrices = np.zeros((w+1, h+1, len(channels)), dtype=np.int8)
+
+    # Setting dummy values.
+    left, top = 100, 100
+    right, bottom = -100, -100
+    for entity in entities:
+        if entity['name'].startswith("assembling-machine"):
+            # Assuming that assembling-machines end with their tier. Usually true.
+            idx = int(entity['name'][-1])
+            key = channels.index("assembler")
+            width, height = 3, 3
+        elif entity.type == "inserter":
+            idx = belt_index(entity['name'])
+            key = channels.index("inserter")
+        elif entity.type in ["transport-belt", "splitter", "underground-belt"]:
+            key = channels.index("belt")
+            if entity.type == 'splitter':
+                if entity['direction'] in [0, 4]:
+                    width = 2
+                    height = 1
+                else:
+                    height = 2
+                    width = 1
+        elif entity.type in ["electric-pole"]:
+            pole_map = {''}
+            key = channels.index("pole")
+        else:
+            continue
+        
+        center_x, center_y = entity['position']
+        left = round(center_x - width/2)
+        top = round(center_y - height/2)
+        right = round(center_x + width/2)
+        bottom = round(center_y + height/2)
+        matrices[left:right, top:bottom, key] = idx
