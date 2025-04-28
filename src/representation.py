@@ -127,6 +127,8 @@ def center_in_N(matrix, N: int = 15) -> np.ndarray[np.ndarray]:
     # Calculate start positions for centering
     start_h = (N - h) // 2
     start_w = (N - w) // 2
+
+    matrix = matrix[t:b, l:r, :]
     
     # Place the original matrix in the center
     if c == 1:
@@ -136,6 +138,7 @@ def center_in_N(matrix, N: int = 15) -> np.ndarray[np.ndarray]:
     
     return centered_matrix
     # return np.transpose(centered_matrix, (2, 0, 1))
+
 
 def map_entity_to_key(entity) -> str:
     key = None
