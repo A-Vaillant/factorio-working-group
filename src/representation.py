@@ -15,6 +15,13 @@ import logging
 # You surely will not regret putting a global variable in your representation module.
 REPR_VERSION = 2
 
+def get_entity_topleft(entity):
+    # Uses Draftsman to get some data, returns topleft coords.
+    from draftsman.data import entities as entity_data
+    pos = entity['position']
+    (l, t), (r, b) = entity_data.raw.get(entity['name'])['selection_box']
+    return (round(pos['x']+l),
+            round(pos['y']+t))
 
 def recursive_json_parse(json_bp: dict) -> list[dict]:
     if 'blueprint' in json_bp:
@@ -98,7 +105,7 @@ class RepresentationError(ValueError):
     pass
 
 
-@dataclass
+@dataclass(frozen=False)
 class Factory:
     json: dict
     _bp: Optional[Blueprint]=None
@@ -136,18 +143,19 @@ class Factory:
             self._bp = get_blueprintable_from_JSON(self.json)
         return self._bp
     
-    @lru_cache
+    # @lru_cache
     def get_matrix(self, dims: tuple[int, int],
                    repr_version: int=REPR_VERSION,
                    **kwargs) -> np.array:
         # Given a version, does some stuff. dims is w:h.
-        if repr_version >= 1:
+        if repr_version <= 1:
             # Basic 4 channel opacity.
             channels = ['assembler', 'inserter', 'belt', 'pole']
             mx = blueprint_to_opacity_matrices(self.blueprint, dims[0], dims[1], **kwargs)
-        elif repr_version >= 2:
+        elif repr_version <= 2:
             # Opacity, power coverage, recipes, directionality.
-            opacity_mx = json_to_opacity_matrices(self.json, dims[0], dims[1], **kwargs)
+            mx = json_to_6channel_matrix(self.json, dims[0], dims[1], **kwargs)
+            # Need a recipe matrix too and a source/sink matrix.
         return mx
 
 
@@ -221,7 +229,11 @@ def bound_bp_by_json(jsf: dict):
     """
     left = 100
     top = 100
-    raise NotImplementedError("Have not implemented this function.")
+    for m in jsf['blueprint']['entities']:
+        a, b = get_entity_topleft(m)
+        left = min(left, a)
+        top = min(top, b)
+    return left, top
     pass
 
 def blueprint_to_opacity_matrices(bp: Blueprint, w=None, h=None,
@@ -305,14 +317,21 @@ splitter_index = {
 }
 belt_index.update(underground_index)
 belt_index.update(splitter_index)
+pole_index = {
+    'small-electric-pole': 1,
+    'medium-electric-pole': 2,
+    'large-electric-pole': 3,
+    'substation': 4
+}
+# Ignores the center point. So for each dimension, we can move that many squares away.
+pole_radius = [2, 3, 1, 8]
 
-# Belts have the following form:
-# [tier-]kind-
+
 def json_to_6channel_matrix(js: dict, w=None, h=None,
                                   trim_topleft: bool=True):
     # Creates opacity matrices AND directionality/electrical coverage matrix.
     entities = js['blueprint']['entities']
-    channels = ['assembler', 'inserter', 'belt', 'pole']
+    channels = ['assembler', 'inserter', 'belt', 'pole', 'direction', 'power']
     if w is None or h is None:
         pass  # break
         # w, h = bp.get_dimensions()
@@ -320,41 +339,63 @@ def json_to_6channel_matrix(js: dict, w=None, h=None,
     if trim_topleft:
         left, top = bound_bp_by_json(js)
         for entity in entities:
-            entity['position'][0] -= left
-            entity['position'][1] -= top
+            entity['position']['x'] -= left
+            entity['position']['y'] -= top
 
     matrices = np.zeros((w+1, h+1, len(channels)), dtype=np.int8)
 
     # Setting dummy values.
     left, top = 100, 100
     right, bottom = -100, -100
+    directionality_data = []  # This is accessed later.
+    power_data = []
     for entity in entities:
+        width, height = 1, 1  # Default values.
+        provides_power = False
+        is_directional = False
         if entity['name'].startswith("assembling-machine"):
             # Assuming that assembling-machines end with their tier. Usually true.
             idx = int(entity['name'][-1])
             key = channels.index("assembler")
             width, height = 3, 3
-        elif entity.type == "inserter":
-            idx = belt_index(entity['name'])
+        elif entity['name'].startswith("inserter"):
+            is_directional = True
+            idx = inserter_index[entity['name']]
             key = channels.index("inserter")
-        elif entity.type in ["transport-belt", "splitter", "underground-belt"]:
+        elif 'belt' in belt_index:
+            is_directional = True
+            idx = belt_index[entity['name']]
             key = channels.index("belt")
-            if entity.type == 'splitter':
+            if 'splitter' in entity['name']:
                 if entity['direction'] in [0, 4]:
                     width = 2
                     height = 1
                 else:
                     height = 2
                     width = 1
-        elif entity.type in ["electric-pole"]:
-            pole_map = {''}
+        elif entity['name'] in pole_index:
+            if entity['name'] == 'substation':
+                width, height = 2, 2
+            provides_power = True
+            idx = pole_index[entity['name']]
             key = channels.index("pole")
         else:
+            logging.info(f"Skipping {entity['name']}.")
+            entity = None
             continue
+
+        logging.info(f"Placing {entity['name']}.")
         
-        center_x, center_y = entity['position']
-        left = round(center_x - width/2)
-        top = round(center_y - height/2)
-        right = round(center_x + width/2)
-        bottom = round(center_y + height/2)
+        left, top = get_entity_topleft(entity)
+        right = left + width
+        bottom = top + height
         matrices[left:right, top:bottom, key] = idx
+        logging.info(f"Taking up: {top}, {left} to {bottom}, {right}.")
+        if is_directional:  # Do some stuff here.
+            key = channels.index('direction')
+            ...
+        if provides_power:  # Do some more stuff here.
+            key = channels.index('power')
+            ...
+
+    return matrices
