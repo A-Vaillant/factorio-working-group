@@ -413,7 +413,7 @@ def json_to_6channel_matrix(js: dict, w=None, h=None,
             idx = int(entity['name'][-1])
             key = channels.index("assembler")
             width, height = 3, 3
-        elif entity['name'].startswith("inserter"):
+        elif entity['name'] in inserter_index:
             is_directional = True
             idx = inserter_index[entity['name']]
             key = channels.index("inserter")
@@ -451,7 +451,7 @@ def json_to_6channel_matrix(js: dict, w=None, h=None,
             matrices[left:right, top:bottom, key] = dir
         if provides_power:  # Do some more stuff here.
             key = channels.index('power')
-            rad = pole_radius[idx]
+            rad = pole_radius[idx-1]
             x0 = max(0, left-rad+1)
             x1 = min(w+1, right+rad-1)
             y0 = max(0, top-rad+1)

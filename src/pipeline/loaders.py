@@ -88,8 +88,58 @@ class FactoryLoader():
         return random.choice(list(self.factories.values()))
 
 
+class Required:
+    def __init__(self, entities):
+        self.required = entities
+
+    def __call__(self, factory):
+        try:
+            entities = factory.json['blueprint']['entities']
+        except KeyError:
+            return False
+        all_entities = set(e['name'] for e in entities)  # Everything has a name.
+        return any(e in all_entities for e in self.required)  # Factory must have one of these.
+
+class Whitelist:
+    def __init__(self, entities):
+        self.allows = entities
+
+    def __call__(self, factory):
+        try:
+            entities = factory.json['blueprint']['entities']
+        except KeyError:
+            return False
+        all_entities = set(e['name'] for e in entities)  # Everything has a name.
+        return all(e in self.allows for e in all_entities)  # All entities must be in the allowlist.
+
+class RecipeWhitelist:
+    def __init__(self, recipes):
+        self.allows = recipes
+
+    def __call__(self, factory):
+        try:
+            entities = factory.json['blueprint']['entities']
+        except KeyError:
+            return False
+        all_recipes = set(e.get('recipe') for e in entities)  # Will end up having None, so...
+        all_recipes.remove(None)  # If a KeyError comes here, wrap it in a try/except.
+        return all(r in self.allows for r in all_recipes)
+
+class Blacklist:
+    def __init__(self, entities):
+        self.bans = entities
+
+    def __call__(self, factory):
+        try:
+            entities = factory.json['blueprint']['entities']
+        except KeyError:
+            return False
+        all_entities = set(e['name'] for e in entities)
+        return all(e not in self.bans for e in all_entities)  # All entities must not be on the banlist.
+
+
 class MatrixLoader(IterableDataset):
-    def __init__(self, iterable_obj: FactoryLoader,
+    def __init__(self, iterable_obj,
                  repr_version=2, center=False,
                  N=15):
         self.io = iterable_obj
