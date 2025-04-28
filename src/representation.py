@@ -15,6 +15,42 @@ import logging
 # You surely will not regret putting a global variable in your representation module.
 REPR_VERSION = 2
 
+
+def find_bounding_box(matrix):
+    """
+    Find the bounding box of non-zero elements across all channels of an HWC matrix.
+    
+    Args:
+        matrix: NumPy array with shape (height, width, channels)
+        
+    Returns:
+        tuple: (top, left, bottom, right) coordinates of bounding box
+    """
+    # Check if matrix is in HWC format
+    if len(matrix.shape) != 3:
+        raise ValueError("Input must be a 3D array in HWC format")
+    
+    # Combine all channels using logical OR to find any non-zero pixels
+    # This creates a 2D mask where a pixel is True if any channel has a non-zero value
+    mask = np.any(matrix != 0, axis=2)
+    
+    # Find non-zero rows and columns
+    non_zero_rows = np.where(np.any(mask, axis=1))[0]
+    non_zero_cols = np.where(np.any(mask, axis=0))[0]
+    
+    # If no non-zero elements are found
+    if len(non_zero_rows) == 0 or len(non_zero_cols) == 0:
+        return None
+    
+    # Get the bounding box coordinates
+    top = non_zero_rows.min()
+    bottom = non_zero_rows.max()
+    left = non_zero_cols.min()
+    right = non_zero_cols.max()
+    
+    return (top, left, bottom, right)
+
+
 def get_entity_topleft(entity):
     # Uses Draftsman to get some data, returns topleft coords.
     from draftsman.data import entities as entity_data
@@ -71,7 +107,23 @@ def center_in_N(matrix, N: int = 15) -> np.ndarray[np.ndarray]:
         centered_matrix = np.zeros((N, N))
     else:
         centered_matrix = np.zeros((N, N, c))
+
+    t, l, b, r = find_bounding_box(matrix)
+    if b - t > N:  # too tall!
+        logging.error(f"Matrix is too tall, height of {h}, {b-t} but dims are {N}x{N}.")
+        # return matrix
+        return
+    else:
+        h = b - t
+    if r - l > N:  # too wide!
+        logging.error(f"Matrix is too wide, width of {w}, {r-l} but dims are {N}x{N}.")
+        # return matrix
+        return
+    else:
+        w = r - l
     
+    # So, we need the top-left and bottom-right for the matrix.
+    # 
     # Calculate start positions for centering
     start_h = (N - h) // 2
     start_w = (N - w) // 2
@@ -82,8 +134,8 @@ def center_in_N(matrix, N: int = 15) -> np.ndarray[np.ndarray]:
     else:
         centered_matrix[start_h:start_h+h, start_w:start_w+w, :] = matrix
     
-    # 
-    return np.transpose(centered_matrix, (2, 0, 1))
+    return centered_matrix
+    # return np.transpose(centered_matrix, (2, 0, 1))
 
 def map_entity_to_key(entity) -> str:
     key = None
@@ -328,11 +380,13 @@ pole_radius = [2, 3, 1, 8]
 
 
 def json_to_6channel_matrix(js: dict, w=None, h=None,
-                                  trim_topleft: bool=True):
+                                  trim_topleft: bool=True,
+                                  center=False):
     # Creates opacity matrices AND directionality/electrical coverage matrix.
     entities = js['blueprint']['entities']
     channels = ['assembler', 'inserter', 'belt', 'pole', 'direction', 'power']
     if w is None or h is None:
+        raise Exception("Must provide dimensions. (Sorry.)")
         pass  # break
         # w, h = bp.get_dimensions()
 
@@ -347,8 +401,6 @@ def json_to_6channel_matrix(js: dict, w=None, h=None,
     # Setting dummy values.
     left, top = 100, 100
     right, bottom = -100, -100
-    directionality_data = []  # This is accessed later.
-    power_data = []
     for entity in entities:
         width, height = 1, 1  # Default values.
         provides_power = False
@@ -367,16 +419,16 @@ def json_to_6channel_matrix(js: dict, w=None, h=None,
             idx = belt_index[entity['name']]
             key = channels.index("belt")
             if 'splitter' in entity['name']:
-                if entity['direction'] in [0, 4]:
+                if entity.get('direction', 0) in [0, 4]:
                     width = 2
                     height = 1
                 else:
                     height = 2
                     width = 1
         elif entity['name'] in pole_index:
+            provides_power = True
             if entity['name'] == 'substation':
                 width, height = 2, 2
-            provides_power = True
             idx = pole_index[entity['name']]
             key = channels.index("pole")
         else:
@@ -385,7 +437,6 @@ def json_to_6channel_matrix(js: dict, w=None, h=None,
             continue
 
         logging.info(f"Placing {entity['name']}.")
-        
         left, top = get_entity_topleft(entity)
         right = left + width
         bottom = top + height
@@ -393,9 +444,22 @@ def json_to_6channel_matrix(js: dict, w=None, h=None,
         logging.info(f"Taking up: {top}, {left} to {bottom}, {right}.")
         if is_directional:  # Do some stuff here.
             key = channels.index('direction')
-            ...
+            dir = entity.get('direction', 0)+1  # NOTE: I guess we have to offset here?
+            matrices[left:right, top:bottom, key] = dir
         if provides_power:  # Do some more stuff here.
             key = channels.index('power')
-            ...
+            rad = pole_radius[idx]
+            x0 = max(0, left-rad+1)
+            x1 = min(w+1, right+rad-1)
+            y0 = max(0, top-rad+1)
+            y1 = min(h+1, bottom+rad-1) 
+            logging.info(f"{entity['name']} with power {(x0, y0)}, {(x1, y1)}")
 
+            matrices[x0:x1, y0:y1, key] = 1
+
+
+    # NOTE: center_in_N doesn't seem to work.
+    if center:
+        N = max(w, h)
+        matrices = center_in_N(matrix=matrices, N=N)
     return matrices

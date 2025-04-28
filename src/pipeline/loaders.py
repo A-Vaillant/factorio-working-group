@@ -1,6 +1,8 @@
 import csv, json, sys
 import random
 import logging
+
+from torch.utils.data import IterableDataset
 from pathlib import Path
 
 from draftsman.error import MalformedBlueprintStringError
@@ -84,3 +86,20 @@ class FactoryLoader():
     
     def random_sample(self):
         return random.choice(list(self.factories.values()))
+
+
+class MatrixLoader(IterableDataset):
+    def __init__(self, iterable_obj: FactoryLoader,
+                 repr_version=2, center=False,
+                 N=15):
+        self.io = iterable_obj
+        self.version = repr_version
+        self.center = center
+        self.dims = (N,N)
+
+    def __iter__(self):
+        # Lets your iterate through the factory matrices.
+        return iter(f.get_matrix(dims=self.dims,
+                                 repr_version=self.version,
+                                 center=self.center,
+                                 ) for f in self.io)

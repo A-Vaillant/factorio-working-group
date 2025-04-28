@@ -25,7 +25,7 @@ def make_rotations(matrix, hwc=True):
         axes = (1, 2)
     for i in range(1, 4):
         rotated = np.rot90(matrix, k=i, axes=axes)  # Rotate on (H, W)
-        key = rotated.tobytes()
+        key = rotated.tobytes()   # A funny caching thing.
         if key not in seen:
             seen.add(key)
             rotations.append(rotated)
@@ -78,14 +78,14 @@ class EntityPuncher():
             root_sequence = []
 
         # levels -= 1
-        for ix, entity in enumerate(self.factory.entities):
+        for ix, entity in enumerate(self.factory.blueprint.entities):
             # print(entity)
             channel_name = map_entity_to_key(entity)
             if not channel_name:
                 continue
             if channel_name == 'pole' and ignore_electricity:
                 continue
-            factory_copy = deepcopy(self.factory)
+            factory_copy = deepcopy(self.factory.blueprint)
             factory_copy.entities.pop(ix)
             root_sequence.append([factory_copy,
                                   self.channels.index(channel_name),
