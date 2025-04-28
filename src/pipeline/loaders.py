@@ -8,7 +8,7 @@ from pathlib import Path
 from draftsman.error import MalformedBlueprintStringError
 from draftsman.utils import string_to_JSON
 
-from src.representation import Factory, recursive_json_parse
+from src.representation import Factory, recursive_json_parse, get_entity_bottomright, get_entity_topleft
 
 
 # TODO: Move this to some kind of configuration.
@@ -136,6 +136,27 @@ class Blacklist:
             return False
         all_entities = set(e['name'] for e in entities)
         return all(e not in self.bans for e in all_entities)  # All entities must not be on the banlist.
+
+
+class SizeRestrictor:
+    def __init__(self, height, width):
+        self.h = height
+        self.w = width
+
+    def __call__(self, factory):
+        left = 100
+        top = 100
+        right = -100
+        bottom = -100
+
+        for m in factory.json['blueprint']['entities']:
+            a, b = get_entity_topleft(m)
+            c, d = get_entity_bottomright(m)
+            left = min(left, a)
+            top = min(top, b)
+            right = max(right, c)
+            bottom = max(bottom, d)
+        return ((right - left) <= self.h) and ((bottom - top) <= self.w)
 
 
 class MatrixLoader(IterableDataset):

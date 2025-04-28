@@ -55,9 +55,24 @@ def get_entity_topleft(entity):
     # Uses Draftsman to get some data, returns topleft coords.
     from draftsman.data import entities as entity_data
     pos = entity['position']
-    (l, t), (r, b) = entity_data.raw.get(entity['name'])['selection_box']
+    raw_entity = entity_data.raw.get(entity['name'])
+    if raw_entity is None:
+        return
+    (l, t), (r, b) = raw_entity['selection_box']
     return (round(pos['x']+l),
             round(pos['y']+t))
+
+def get_entity_bottomright(entity):
+    # Uses Draftsman to get some data, returns topleft coords.
+    from draftsman.data import entities as entity_data
+    pos = entity['position']
+    raw_entity = entity_data.raw.get(entity['name'])
+    if raw_entity is None:
+        return
+    (l, t), (r, b) = raw_entity['selection_box']
+    return (round(pos['x']+r),
+            round(pos['y']+b))
+
 
 def recursive_json_parse(json_bp: dict) -> list[dict]:
     if 'blueprint' in json_bp:
@@ -289,7 +304,6 @@ def bound_bp_by_json(jsf: dict):
         left = min(left, a)
         top = min(top, b)
     return left, top
-    pass
 
 def blueprint_to_opacity_matrices(bp: Blueprint, w=None, h=None,
                                   trim_topleft: bool=True):
