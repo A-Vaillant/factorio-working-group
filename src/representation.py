@@ -362,7 +362,7 @@ def json_to_6channel_matrix(js: dict, w=None, h=None,
             is_directional = True
             idx = inserter_index[entity['name']]
             key = channels.index("inserter")
-        elif 'belt' in belt_index:
+        elif entity['name'] in belt_index:
             is_directional = True
             idx = belt_index[entity['name']]
             key = channels.index("belt")
