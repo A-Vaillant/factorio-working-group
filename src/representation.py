@@ -40,7 +40,7 @@ def find_bounding_box(matrix):
     
     # If no non-zero elements are found
     if len(non_zero_rows) == 0 or len(non_zero_cols) == 0:
-        return None
+        return (0, 0, 0, 0)
     
     # Get the bounding box coordinates
     top = non_zero_rows.min()

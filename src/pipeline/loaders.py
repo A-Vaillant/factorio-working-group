@@ -159,18 +159,27 @@ class SizeRestrictor:
         return ((right - left) <= self.h) and ((bottom - top) <= self.w)
 
 
+# This should probably not bother with the filtering and just focus on having
+# Factories which have matrices inside them, no?
 class MatrixLoader(IterableDataset):
     def __init__(self, iterable_obj,
                  repr_version=2, center=False,
+                 filters=None,
                  N=15):
         self.io = iterable_obj
         self.version = repr_version
         self.center = center
         self.dims = (N,N)
+        if filters is None:
+            filters = []
+        self.filters = filters
 
     def __iter__(self):
-        # Lets your iterate through the factory matrices.
-        return iter(f.get_matrix(dims=self.dims,
+        # Includes filtering early on.
+        io = self.io
+        for X in self.filters:
+            io = filter(X, io)
+        return iter((f, f.get_matrix(dims=self.dims,
                                  repr_version=self.version,
                                  center=self.center,
-                                 ) for f in self.io)
+                                 )) for f in io)
