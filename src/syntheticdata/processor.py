@@ -95,11 +95,11 @@ class EntityPuncher():
 
 # TODO: Move this.
 datasets = {
-    'av-redscience': 'raw/txt/av',
-    'factorio-tech-json': 'raw/json/factorio-tech',
-    'factorio-tech': 'raw/csv/factorio-tech',
-    'factorio-codex': 'raw/csv/factorio-codex',
-    'idan': 'raw/csv/idan_blueprints.csv',
+    'av-redscience': 'txt/av',
+    'factorio-tech-json': 'json/factorio-tech',
+    'factorio-tech': 'csv/factorio-tech',
+    'factorio-codex': 'csv/factorio-codex',
+    'idan': 'csv/idan_blueprints.csv',
 }
 
 def load_dataset(dataset_name: str='av-redscience',

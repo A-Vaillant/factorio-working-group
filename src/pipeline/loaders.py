@@ -2,14 +2,14 @@ import csv, json, sys
 import random
 import logging
 
+import numpy as np
 from torch.utils.data import IterableDataset
 from pathlib import Path
 
 from draftsman.error import MalformedBlueprintStringError
 from draftsman.utils import string_to_JSON
 
-from src.representation import Factory, recursive_json_parse, get_entity_bottomright, get_entity_topleft
-
+from src.representation import Factory, recursive_json_parse
 
 # TODO: Move this to some kind of configuration.
 data_root = Path('data')
@@ -19,7 +19,7 @@ class FactoryLoader():
     def __init__(self, raw_data_src,
                  update_direction: bool=True):
         # We're gonna use raw/txt/av here.
-        loading_root = data_root / raw_data_src
+        loading_root = (data_root / 'raw') / raw_data_src
         self.factories = dict()
         if 'txt' in str(raw_data_src):  # Text loader.
             manifile = loading_root / Path('manifest.json')
@@ -32,6 +32,7 @@ class FactoryLoader():
                 with (loading_root / v).open() as bfile:
                     v = string_to_JSON(bfile.read())
                 self.update_factories(k, v)
+
         elif 'csv' in str(raw_data_src):  # csv loader
             csv.field_size_limit(sys.maxsize)
             # Allows us to load singular CSVs.
@@ -53,7 +54,6 @@ class FactoryLoader():
                             self.update_factories(k, v)
                     except UnicodeDecodeError:
                         logging.warning(f"Could not use {str(csvfile)} due to UnicodeDecodeError.")
-
 
         elif 'json' in str(raw_data_src):  # json loader
             for jsonfile in loading_root.glob("*.json"):
@@ -88,77 +88,6 @@ class FactoryLoader():
         return random.choice(list(self.factories.values()))
 
 
-class Required:
-    def __init__(self, entities):
-        self.required = entities
-
-    def __call__(self, factory):
-        try:
-            entities = factory.json['blueprint']['entities']
-        except KeyError:
-            return False
-        all_entities = set(e['name'] for e in entities)  # Everything has a name.
-        return any(e in all_entities for e in self.required)  # Factory must have one of these.
-
-class Whitelist:
-    def __init__(self, entities):
-        self.allows = entities
-
-    def __call__(self, factory):
-        try:
-            entities = factory.json['blueprint']['entities']
-        except KeyError:
-            return False
-        all_entities = set(e['name'] for e in entities)  # Everything has a name.
-        return all(e in self.allows for e in all_entities)  # All entities must be in the allowlist.
-
-class RecipeWhitelist:
-    def __init__(self, recipes):
-        self.allows = recipes
-
-    def __call__(self, factory):
-        try:
-            entities = factory.json['blueprint']['entities']
-        except KeyError:
-            return False
-        all_recipes = set(e.get('recipe') for e in entities)  # Will end up having None, so...
-        all_recipes.remove(None)  # If a KeyError comes here, wrap it in a try/except.
-        return all(r in self.allows for r in all_recipes)
-
-class Blacklist:
-    def __init__(self, entities):
-        self.bans = entities
-
-    def __call__(self, factory):
-        try:
-            entities = factory.json['blueprint']['entities']
-        except KeyError:
-            return False
-        all_entities = set(e['name'] for e in entities)
-        return all(e not in self.bans for e in all_entities)  # All entities must not be on the banlist.
-
-
-class SizeRestrictor:
-    def __init__(self, height, width):
-        self.h = height
-        self.w = width
-
-    def __call__(self, factory):
-        left = 100
-        top = 100
-        right = -100
-        bottom = -100
-
-        for m in factory.json['blueprint']['entities']:
-            a, b = get_entity_topleft(m)
-            c, d = get_entity_bottomright(m)
-            left = min(left, a)
-            top = min(top, b)
-            right = max(right, c)
-            bottom = max(bottom, d)
-        return ((right - left) <= self.h) and ((bottom - top) <= self.w)
-
-
 # This should probably not bother with the filtering and just focus on having
 # Factories which have matrices inside them, no?
 class MatrixLoader(IterableDataset):
@@ -174,7 +103,7 @@ class MatrixLoader(IterableDataset):
             filters = []
         self.filters = filters
 
-    def __iter__(self):
+    def __iter__(self) -> iter[tuple[Factory, np.ndarray]]:
         # Includes filtering early on.
         io = self.io
         for X in self.filters:
