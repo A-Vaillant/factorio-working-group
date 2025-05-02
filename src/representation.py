@@ -480,3 +480,92 @@ def json_to_6channel_matrix(js: dict, w=None, h=None,
         N = max(w, h)
         matrices = center_in_N(matrix=matrices, N=N)
     return matrices
+
+
+def json_to_7channel_matrix(js: dict, w=None, h=None,
+                            trim_topleft: bool=True,
+                            center=False):
+    # Creates opacity matrices, directionality, recipe and item ID channels.
+    entities = js['blueprint']['entities']
+    channels = ['assembler', 'inserter', 'belt', 'pole', 'direction', 'recipe', 'item']
+    if w is None or h is None:
+        raise Exception("Must provide dimensions. (Sorry.)")
+        pass  # break
+        # w, h = bp.get_dimensions()
+
+    if trim_topleft:
+        left, top = bound_bp_by_json(js)
+        for entity in entities:
+            entity['position']['x'] -= left
+            entity['position']['y'] -= top
+
+    matrices = np.zeros((w+1, h+1, len(channels)), dtype=np.int8)
+
+    # Setting dummy values.
+    left, top = 100, 100
+    right, bottom = -100, -100
+    for entity in entities:
+        width, height = 1, 1  # Default values.
+        # provides_power = False
+        is_directional = False
+        # TODO: Change idx to be the item's ID.
+        if entity['name'].startswith("assembling-machine"):
+            idx = int(entity['name'][-1])
+            key = channels.index("assembler")
+            width, height = 3, 3
+        elif entity['name'] in inserter_index:
+            is_directional = True
+            idx = inserter_index[entity['name']]
+            key = channels.index("inserter")
+        elif entity['name'] in belt_index:
+            is_directional = True
+            idx = belt_index[entity['name']]
+            key = channels.index("belt")
+            if 'splitter' in entity['name']:
+                if entity.get('direction', 0) in [0, 4]:
+                    width = 2
+                    height = 1
+                else:
+                    height = 2
+                    width = 1
+        elif entity['name'] in pole_index:
+            provides_power = True
+            if entity['name'] == 'substation':
+                width, height = 2, 2
+            idx = pole_index[entity['name']]
+            key = channels.index("pole")
+        else:
+            logging.info(f"Skipping {entity['name']}.")
+            entity = None
+            continue
+
+        # Placement logic
+        logging.info(f"Placing {entity['name']}.")
+        left, top = get_entity_topleft(entity)
+        right = left + width
+        bottom = top + height
+        matrices[left:right, top:bottom, key] = 1
+        item_channel = channels.index('items')
+        matrices[left:right, top:bottom, item_channel] = idx
+        logging.info(f"Taking up: {top}, {left} to {bottom}, {right}.")
+        if is_directional:  # Do some stuff here.
+            key = channels.index('direction')
+            dir = entity.get('direction', 0)+1  # NOTE: I guess we have to offset here?
+            matrices[left:right, top:bottom, key] = dir
+        # if provides_power:
+        #     key = channels.index('power')
+        #     rad = pole_radius[idx-1]
+        #     x0 = max(0, left-rad+1)
+        #     x1 = min(w+1, right+rad-1)
+        #     y0 = max(0, top-rad+1)
+        #     y1 = min(h+1, bottom+rad-1) 
+        #     logging.info(f"{entity['name']} with power {(x0, y0)}, {(x1, y1)}")
+
+        #     matrices[x0:x1, y0:y1, key] = 1
+
+
+    # NOTE: center_in_N doesn't seem to work.
+    if center:
+        N = max(w, h)
+        matrices = center_in_N(matrix=matrices, N=N)
+    return matrices

@@ -8,68 +8,10 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import random_split
 import time
-import copy
+import copy    
 
 
-class FactoryDataset(Dataset):
-    def __init__(self, data_dir, transform=None):
-        """
-        Dataset for factory images with multiple channels
-        
-        Args:
-            data_dir (str): Directory containing the numpy arrays
-            transform (callable, optional): Optional transform to apply to the data
-        """
-        self.data_dir = Path(data_dir)
-        self.transform = transform
-        self.file_list = [f for f in os.listdir(data_dir) if f.endswith('.npy')]
-        
-        # Check if we have recipe IDs
-        self.recipe_ids_path = self.data_dir / 'recipe_ids.npy'
-        self.has_recipes = self.recipe_ids_path.exists()
-        if self.has_recipes:
-            self.recipe_ids = np.load(self.recipe_ids_path)
-    
-    def __len__(self):
-        return len(self.file_list)
-    
-    def __getitem__(self, idx):
-        # Load numpy array (H×W×C)
-        file_path = self.data_dir / self.file_list[idx]
-        data_array = np.load(file_path)
-        
-        # Extract channels
-        opacity_channels = data_array[:, :, :4]  # First 4 channels
-        recipe_channel = data_array[:, :, 4:5]   # Recipe channel
-        direction_channel = data_array[:, :, 5:6]  # Directionality channel
-        power_channel = data_array[:, :, 6:7]    # Power coverage channel
-        source_sink_channel = data_array[:, :, 7:8]  # Source/sink channel
-        
-        # Combine all channels and convert to tensor
-        # Rearrange from HWC to CHW format for PyTorch
-        all_channels = np.concatenate([
-            opacity_channels,
-            recipe_channel,
-            direction_channel, 
-            power_channel,
-            source_sink_channel
-        ], axis=2)
-        
-        # Convert to PyTorch tensor and rearrange dimensions
-        tensor_data = torch.from_numpy(all_channels).permute(2, 0, 1).float()
-        
-        # Get recipe ID if available
-        recipe_id = None
-        if self.has_recipes:
-            recipe_id = torch.tensor(self.recipe_ids[idx], dtype=torch.long)
-        
-        # Apply transforms if any
-        if self.transform:
-            tensor_data = self.transform(tensor_data)
-            
-        return tensor_data, recipe_id
-    
-
+# Input signal
 
 class FactoryTrainer:
     def __init__(self, model, criterion=None, optimizer=None, scheduler=None, 

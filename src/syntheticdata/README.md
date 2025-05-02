@@ -8,3 +8,10 @@ FactoryLoader: Gets everything from raw/txt/av/manifest.json from the `data_file
 
 EntityPuncher: Given a factory and some parameters, generates a bunch of blueprints that correspond to a single entity being removed.
 
+## Actions
+most generic is: Add an entity. So input signal would specify the entity channel and the top-left corner.
+
+- Add an Assembler
+- Add an Inserter
+- Add a New Belt Line
+- Extend a Belt Line
