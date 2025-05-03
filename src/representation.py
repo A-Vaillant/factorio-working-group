@@ -16,6 +16,16 @@ import logging
 REPR_VERSION = 3
 
 from draftsman.data import recipes as recipe_data
+from draftsman.data import items
+
+def get_item_id_from_name(item_name: str) -> int:
+    # Note: Wooden Chests have an index of 0, so we have to offset everything.
+    arr_index = [i for i in items.raw.keys()].index(item_name)
+    return arr_index + 1
+
+def get_item_name_from_id(item_id: int) -> str:
+    arr_name = [i for i in items.raw.keys()][item_id - 1]
+    return arr_name
 
 def _first_product_name(recipe_name: str) -> str | None:
     """Return the name of the first product (if any) of a recipe."""
@@ -25,12 +35,6 @@ def _first_product_name(recipe_name: str) -> str | None:
     if "results" in r:              # Some mods / prototypes
         return r["results"][0]["name"]
     return r.get("result")          # Legacy single‑result field
-
-def _is_main_output(recipe_name: str) -> bool:
-    if not icons:
-        return False
-    return _first_product_name(recipe_name) == icons[0]["signal"]["name"]
-
 
 
 def find_bounding_box(matrix):
@@ -239,7 +243,7 @@ class Factory:
         elif repr_version == 2:
             return json_to_6channel_matrix(self.json, *dims, **kwargs)
         elif repr_version == 3:
-            return json_to_v3_matrix(self.json, *dims, **kwargs)
+            return json_to_7channel_matrix(self.json, *dims, **kwargs)
         else:
             raise RepresentationError(f"Unknown repr_version {repr_version}")
 
@@ -497,16 +501,12 @@ def json_to_6channel_matrix(js: dict, w=None, h=None,
     return matrices
 
 
-def json_to_7channel_matrix(js: dict, w=None, h=None,
+def json_to_7channel_matrix(js: dict, w, h,
                             trim_topleft: bool=True,
                             center=False):
     # Creates opacity matrices, directionality, recipe and item ID channels.
     entities = js['blueprint']['entities']
     channels = ['assembler', 'inserter', 'belt', 'pole', 'direction', 'recipe', 'item']
-    if w is None or h is None:
-        raise Exception("Must provide dimensions. (Sorry.)")
-        pass  # break
-        # w, h = bp.get_dimensions()
 
     if trim_topleft:
         left, top = bound_bp_by_json(js)
@@ -514,40 +514,32 @@ def json_to_7channel_matrix(js: dict, w=None, h=None,
             entity['position']['x'] -= left
             entity['position']['y'] -= top
 
-    matrices = np.zeros((w+1, h+1, len(channels)), dtype=np.int8)
+    mats = np.zeros((w + 1, h + 1, len(channels)), dtype=np.int16)
 
-    # Setting dummy values.
-    left, top = 100, 100
-    right, bottom = -100, -100
+    # build the recipe‑id map once
+    recipe_id = _make_recipe_index(entities)
+    
     for entity in entities:
-        width, height = 1, 1  # Default values.
-        # provides_power = False
+        name, width, height = entity['name'], 1, 1  # Default values.
         is_directional = False
-        # TODO: Change idx to be the item's ID.
-        if entity['name'].startswith("assembling-machine"):
-            idx = int(entity['name'][-1])
+        idx = get_item_id_from_name(name)
+        if name.startswith("assembling-machine"):
             key = channels.index("assembler")
             width, height = 3, 3
-        elif entity['name'] in inserter_index:
-            is_directional = True
-            idx = inserter_index[entity['name']]
+        elif name in inserter_index:
             key = channels.index("inserter")
-        elif entity['name'] in belt_index:
             is_directional = True
-            idx = belt_index[entity['name']]
+        elif name in belt_index:
+            is_directional = True
             key = channels.index("belt")
-            if 'splitter' in entity['name']:
+            if 'splitter' in name:
                 if entity.get('direction', 0) in [0, 4]:
-                    width = 2
-                    height = 1
+                    width, height = 2, 1
                 else:
-                    height = 2
-                    width = 1
-        elif entity['name'] in pole_index:
-            provides_power = True
-            if entity['name'] == 'substation':
+                    width, height = 1, 2
+        elif name in pole_index:
+            if name == 'substation':
                 width, height = 2, 2
-            idx = pole_index[entity['name']]
             key = channels.index("pole")
         else:
             logging.info(f"Skipping {entity['name']}.")
@@ -556,109 +548,100 @@ def json_to_7channel_matrix(js: dict, w=None, h=None,
 
         # Placement logic
         logging.info(f"Placing {entity['name']}.")
-        left, top = get_entity_topleft(entity)
-        right = left + width
-        bottom = top + height
-        matrices[left:right, top:bottom, key] = 1
-        item_channel = channels.index('items')
-        matrices[left:right, top:bottom, item_channel] = idx
-        logging.info(f"Taking up: {top}, {left} to {bottom}, {right}.")
-        if is_directional:  # Do some stuff here.
-            key = channels.index('direction')
-            dir = entity.get('direction', 0)+1  # NOTE: I guess we have to offset here?
-            matrices[left:right, top:bottom, key] = dir
-        # if provides_power:
-        #     key = channels.index('power')
-        #     rad = pole_radius[idx-1]
-        #     x0 = max(0, left-rad+1)
-        #     x1 = min(w+1, right+rad-1)
-        #     y0 = max(0, top-rad+1)
-        #     y1 = min(h+1, bottom+rad-1) 
-        #     logging.info(f"{entity['name']} with power {(x0, y0)}, {(x1, y1)}")
+        # Determining the item's bounds.
+        lx, ty = get_entity_topleft(entity)
+        rx, by = lx + width, ty + height
+        # Placing the building on the matrix.
+        mats[lx:rx, ty:by, key] = 1
+        mats[lx:rx, ty:by, channels.index('item')] = idx
+        
+        logging.info(f"Taking up: {ty}, {lx} to {by}, {rx}.")
+        if is_directional:
+            mats[lx:rx, ty:by, channels.index("direction")] = entity.get('direction', 0) + 1
 
-        #     matrices[x0:x1, y0:y1, key] = 1
-
+        # recipe
+        if key == 0 and "recipe" in entity:
+            mats[lx:rx, ty:by, channels.index("recipe")] = recipe_id[entity["recipe"]]
 
     # NOTE: center_in_N doesn't seem to work.
     if center:
         N = max(w, h)
-        matrices = center_in_N(matrix=matrices, N=N)
-    return matrices
-
-def json_to_v3_matrix(js: dict, w, h,
-                      trim_topleft: bool = True,
-                      center: bool = False):
-    """
-    assembler / inserter / belt / pole / direction / recipe‑id / item‑id
-    """
-    channels = ["assembler", "inserter", "belt",
-                "pole", "direction", "recipe", "item"]
-
-    entities = js["blueprint"]["entities"]
-    icons    = js["blueprint"].get("icons", [])
-
-    if trim_topleft:
-        left, top = bound_bp_by_json(js)
-        for ent in entities:
-            ent["position"]["x"] -= left
-            ent["position"]["y"] -= top
-
-    mats = np.zeros((w + 1, h + 1, len(channels)), dtype=np.int16)
-
-    # build the recipe‑id map once
-    recipe_id = _make_recipe_index(entities)
-
-    for ent in entities:
-        name, w_, h_ = ent["name"], 1, 1
-        is_dir = False
-
-        # ---------------- entity‑class → channel + class‑local id ----------
-        if name.startswith("assembling-machine"):
-            key, w_, h_, idx = 0, 3, 3, int(name[-1])          # assembler tier
-        elif name in inserter_index:
-            key, is_dir, idx = 1, True, inserter_index[name]
-        elif name in belt_index:
-            key, is_dir, idx = 2, True, belt_index[name]
-            if "splitter" in name:
-                if ent.get("direction", 0) in (0, 4):
-                    w_, h_ = 2, 1
-                else:
-                    w_, h_ = 1, 2
-        elif name in pole_index:
-            key, idx = 3, pole_index[name]
-            if name == "substation":
-                w_, h_ = 2, 2
-        else:
-            continue
-
-        # ---------------- place the entity’s footprint ---------------------
-        lx, ty = get_entity_topleft(ent)
-        rx, by = lx + w_, ty + h_
-        mats[lx:rx, ty:by, key] = 1
-        mats[lx:rx, ty:by, channels.index("item")] = idx
-
-        # direction
-        if is_dir:
-            mats[lx:rx, ty:by, channels.index("direction")] = ent.get("direction", 0) + 1
-
-        # recipe
-        if key == 0 and "recipe" in ent:
-            mats[lx:rx, ty:by, channels.index("recipe")] = recipe_id[ent["recipe"]]
-
-    if center:
-        N = max(w, h)
-        mats = center_in_N(mats, N)
-
+        mats = center_in_N(matrix=mats, N=N)
     return mats
 
+# def json_to_v3_matrix(js: dict, w, h,
+#                       trim_topleft: bool = True,
+#                       center: bool = False):
+#     """
+#     assembler / inserter / belt / pole / direction / recipe‑id / item‑id
+#     """
+#     channels = ["assembler", "inserter", "belt",
+#                 "pole", "direction", "recipe", "item"]
 
-def _first_product_name(recipe_name: str) -> str | None:
-    r = recipe_data.raw.get(recipe_name, {})
-    if "products" in r:          # Factorio ≥0.18
-        return r["products"][0]["name"]
-    if "results" in r:           # some mods
-        return r["results"][0]["name"]
-    return r.get("result")       # legacy single‑field
+#     entities = js["blueprint"]["entities"]
+
+#     if trim_topleft:
+#         left, top = bound_bp_by_json(js)
+#         for ent in entities:
+#             ent["position"]["x"] -= left
+#             ent["position"]["y"] -= top
+
+#     mats = np.zeros((w + 1, h + 1, len(channels)), dtype=np.int16)
+
+#     # build the recipe‑id map once
+#     recipe_id = _make_recipe_index(entities)
+
+#     for ent in entities:
+#         name, w_, h_ = ent["name"], 1, 1
+#         is_dir = False
+
+#         # ---------------- entity‑class → channel + class‑local id ----------
+#         if name.startswith("assembling-machine"):
+#             key, w_, h_, idx = 0, 3, 3, int(name[-1])          # assembler tier
+#         elif name in inserter_index:
+#             key, is_dir, idx = 1, True, inserter_index[name]
+#         elif name in belt_index:
+#             key, is_dir, idx = 2, True, belt_index[name]
+#             if "splitter" in name:
+#                 if ent.get("direction", 0) in (0, 4):
+#                     w_, h_ = 2, 1
+#                 else:
+#                     w_, h_ = 1, 2
+#         elif name in pole_index:
+#             key, idx = 3, pole_index[name]
+#             if name == "substation":
+#                 w_, h_ = 2, 2
+#         else:
+#             continue
+
+#         # ---------------- place the entity’s footprint ---------------------
+#         lx, ty = get_entity_topleft(ent)
+#         rx, by = lx + w_, ty + h_
+#         mats[lx:rx, ty:by, key] = 1
+#         mats[lx:rx, ty:by, channels.index("item")] = idx
+
+#         # direction
+#         if is_dir:
+#             mats[lx:rx, ty:by, channels.index("direction")] = ent.get("direction", 0) + 1
+
+#         # recipe
+#         if key == 0 and "recipe" in ent:
+#             mats[lx:rx, ty:by, channels.index("recipe")] = recipe_id[ent["recipe"]]
+
+#     if center:
+#         N = max(w, h)
+#         mats = center_in_N(mats, N)
+
+#     return mats
+
+
+# def _first_product_name(recipe_name: str) -> str | None:
+#     r = recipe_data.raw.get(recipe_name, {})
+#     if "products" in r:          # Factorio ≥0.18
+#         return r["products"][0]["name"]
+#     if "results" in r:           # some mods
+#         return r["results"][0]["name"]
+#     return r.get("result")       # legacy single‑field
 
 def _make_recipe_index(entities) -> dict[str, int]:
     """

@@ -77,8 +77,11 @@ class FactoryLoader():
                          v: dict):
         vs = []
         vs += recursive_json_parse(v)
-        for ix, v in enumerate(vs):
-            self.factories[f"{k}-{ix}"] = Factory(json=v)
+        if len(vs) > 1:
+            for ix, v in enumerate(vs):
+                self.factories[f"{k}-{ix}"] = Factory(json=v)
+        else:
+            self.factories[k] = Factory(json=v)
         
     def __iter__(self):
         # Lets you iterate through the Blueprints by just iterating over the Loader.
@@ -103,7 +106,7 @@ class MatrixLoader(IterableDataset):
             filters = []
         self.filters = filters
 
-    def __iter__(self) -> iter[tuple[Factory, np.ndarray]]:
+    def __iter__(self):
         # Includes filtering early on.
         io = self.io
         for X in self.filters:
