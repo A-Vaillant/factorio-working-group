@@ -606,7 +606,7 @@ def json_to_v3_matrix(js: dict, w, h,
     mats = np.zeros((w + 1, h + 1, len(channels)), dtype=np.int16)
 
     # build the recipe‑id map once
-    recipe_id = _make_recipe_index(entities, icons)
+    recipe_id = _make_recipe_index(entities)
 
     for ent in entities:
         name, w_, h_ = ent["name"], 1, 1
@@ -660,24 +660,17 @@ def _first_product_name(recipe_name: str) -> str | None:
         return r["results"][0]["name"]
     return r.get("result")       # legacy single‑field
 
-def _make_recipe_index(entities, icons):
+def _make_recipe_index(entities) -> dict[str, int]:
     """
-    Return a dict  {recipe_name: local_id}.  
-    – id 0 is reserved for the recipe whose *first* product matches
-      the first icon of the blueprint (treated as the “main output”);
-    – the rest are numbered 1… in order of first appearance.
+    Return a dict mapping each recipe_name to a unique integer ID,
+    numbered 0, 1, 2… in order of first appearance (ignores icons).
     """
-    def _is_main_output(recipe_name: str) -> bool:
-        if not icons:
-            return False
-        return _first_product_name(recipe_name) == icons[0]["signal"]["name"]
-
-    index, next_id = {}, 1
+    index: dict[str, int] = {}
+    next_id = 0
     for e in entities:
         r = e.get("recipe")
         if r is None or r in index:
             continue
-        index[r] = 0 if _is_main_output(r) else next_id
-        if index[r] != 0:
-            next_id += 1
+        index[r] = next_id
+        next_id += 1
     return index
