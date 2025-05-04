@@ -19,9 +19,9 @@ data_root = Path('data')
 
 class FactoryLoader():
     def __init__(self, raw_data_src,
-                 update_direction: bool=True):
+                 update_direction: bool=True, base_path=data_root):
         # We're gonna use raw/txt/av here.
-        loading_root = (data_root / 'raw') / raw_data_src
+        loading_root = (base_path / 'raw') / raw_data_src
         self.factories = dict()
         if 'txt' in str(raw_data_src):  # Text loader.
             manifile = loading_root / Path('manifest.json')

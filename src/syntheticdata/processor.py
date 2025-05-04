@@ -117,6 +117,18 @@ class EntityPuncher():
         )
         return bp
 
+    def is_valid_start_state(self, blueprint, max_total_entities=4):
+        """Returns True if exactly 1 assembler and only a few total entities exist."""
+        assembler_count = 0
+        total_count = 0
+        for e in blueprint.entities:
+            if self.map_entity_to_key(e) is None:
+                continue
+            total_count += 1
+            if self.map_entity_to_key(e) == 'assembler':
+                assembler_count += 1
+        return assembler_count == 1 and total_count <= max_total_entities
+
     def _sort_assemblers(self, entities):
         return sorted(
             [e for e in entities if map_entity_to_key(e)=='assembler'],
@@ -128,7 +140,12 @@ class EntityPuncher():
         from collections import defaultdict
         chains = []
         unused = set([id(e) for e in entities if map_entity_to_key(e)=='belt'])
+        # print("\nUNUSED:\n" + str(unused))
+        # for e in entities:
+        #     print(str(e) + "\n\t" + str(e.direction) )
         pos_map = {tuple(e.tile_position): e for e in entities if map_entity_to_key(e)=='belt'}
+        # print("\nPOS MAP: \n" + str(pos_map))
+        # print("\nPOS MAP: \n" + str(pos_map.get((1,0))))
         for e in entities:
             if map_entity_to_key(e)!='belt' or id(e) not in unused: continue
             chain = [e]
@@ -137,8 +154,8 @@ class EntityPuncher():
             cur = e
             while True:
                 nbr_pos = (
-                    cur.tile_position[0] + cur.direction.vector[0],
-                    cur.tile_position[1] + cur.direction.vector[1]
+                    cur.tile_position[0] + cur.direction.vector[0], # x pos?
+                    cur.tile_position[1] + cur.direction.vector[1]  # y pos?
                 )
                 nbr = pos_map.get(tuple(nbr_pos), None)
                 if nbr and id(nbr) in unused:
@@ -185,7 +202,9 @@ class EntityPuncher():
         """
         pairs = []
         # 1) Start from a random 'starting blueprint'
+        # TODO we should start from an initial blueprint and end at a starting state
         current_bp = self._starting_blueprint()
+        # current_bp = self.blueprint
         removed_ids = set()
 
         while len(pairs) < num_pairs:
@@ -213,7 +232,7 @@ class EntityPuncher():
                 if e.tile_position == pos and map_entity_to_key(e)==self.channels[ch]:
                     bp_after.entities.pop(i)
                     break
-            removed_ids.add(pos)  # mark this pos as 'removed' for inserter logic
+            removed_ids.add(tuple(pos))  # mark this pos as 'removed' for inserter logic
 
             # 5) check your noise/starting distribution—here we simply accept all
             #    (you can plug in your own predicate, e.g. count_entities(bp_after)>k)
