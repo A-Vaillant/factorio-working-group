@@ -13,7 +13,7 @@ from functools import lru_cache
 import logging
 
 # You surely will not regret putting a global variable in your representation module.
-REPR_VERSION = 3
+REPR_VERSION = 4
 
 from draftsman.data import recipes as recipe_data
 from draftsman.data import items
@@ -76,10 +76,13 @@ def get_entity_topleft(entity):
     # Uses Draftsman to get some data, returns topleft coords.
     from draftsman.data import entities as entity_data
     pos = entity['position']
-    raw_entity = entity_data.raw.get(entity['name'])
-    if raw_entity is None:
-        return
-    (l, t), (r, b) = raw_entity['selection_box']
+    if entity['name'] == 'ee-infinity-loader':  # Custom modded sink/source object.
+        (l, t), (r, b) = [-0.4, -0.4], [0.4, 0.4]
+    else:
+        raw_entity = entity_data.raw.get(entity['name'])
+        (l, t), (r, b) = raw_entity['selection_box']
+        if raw_entity is None:
+            return
     return (round(pos['x']+l),
             round(pos['y']+t))
 
@@ -237,7 +240,6 @@ class Factory:
     # @lru_cache
     def get_matrix(self, dims: tuple[int, int],
                 repr_version: int = REPR_VERSION,
-                return_tensor: bool=False,
                 **kwargs):
         if repr_version == 1:
             mats = blueprint_to_opacity_matrices(self.blueprint, *dims, **kwargs)
@@ -245,10 +247,10 @@ class Factory:
             mats = json_to_6channel_matrix(self.json, *dims, **kwargs)
         elif repr_version == 3:
             mats = json_to_7channel_matrix(self.json, *dims, **kwargs)
+        elif repr_version == 4:
+            mats = json_to_8channel_matrix(self.json, *dims, **kwargs)
         else:
             raise RepresentationError(f"Unknown repr_version {repr_version}")
-        if return_tensor:
-            mats = ...
         return mats
 
 
@@ -573,79 +575,83 @@ def json_to_7channel_matrix(js: dict, w, h,
         mats = center_in_N(matrix=mats, N=N)
     return mats
 
-# def json_to_v3_matrix(js: dict, w, h,
-#                       trim_topleft: bool = True,
-#                       center: bool = False):
-#     """
-#     assembler / inserter / belt / pole / direction / recipe‑id / item‑id
-#     """
-#     channels = ["assembler", "inserter", "belt",
-#                 "pole", "direction", "recipe", "item"]
 
-#     entities = js["blueprint"]["entities"]
+def json_to_8channel_matrix(js: dict, w, h,
+                            trim_topleft: bool=True,
+                            center=False):
+    # Creates opacity matrices, directionality, recipe, item ID and source/sink channels.
+    entities = js['blueprint']['entities']
+    channels = ['assembler', 'inserter', 'belt', 'pole',
+                'direction', 'recipe', 'item', 'sourcesink']
+    X = 1
 
-#     if trim_topleft:
-#         left, top = bound_bp_by_json(js)
-#         for ent in entities:
-#             ent["position"]["x"] -= left
-#             ent["position"]["y"] -= top
+    if trim_topleft:
+        left, top = bound_bp_by_json(js)
+        for entity in entities:
+            entity['position']['x'] -= left
+            entity['position']['y'] -= top
 
-#     mats = np.zeros((w + 1, h + 1, len(channels)), dtype=np.int16)
+    mats = np.zeros((w + 1, h + 1, len(channels)), dtype=np.int16)
 
-#     # build the recipe‑id map once
-#     recipe_id = _make_recipe_index(entities)
+    # build the recipe‑id map once
+    recipe_id = _make_recipe_index(entities)
+    
+    for entity in entities:
+        name, width, height = entity['name'], 1, 1  # Default values.
+        is_directional = False
+        idx = get_item_id_from_name(name)
+        if name.startswith("assembling-machine"):
+            key = channels.index("assembler")
+            width, height = 3, 3
+        elif name in inserter_index:
+            key = channels.index("inserter")
+            is_directional = True
+        elif name in belt_index:
+            is_directional = True
+            key = channels.index("belt")
+            if 'splitter' in name:
+                if entity.get('direction', 0) in [0, 4]:
+                    width, height = 2, 1
+                else:
+                    width, height = 1, 2
+        elif name in pole_index:
+            if name == 'substation':
+                width, height = 2, 2
+            key = channels.index("pole")
+        elif name == 'ee-infinity-loader':  # Source or sink.
+            is_directional = True
+            key = channels.index("belt")
+            if entity.get('filter') is None:  # Sink.
+                X = -1
+            idx = get_item_id_from_name('underground-belt')  # Treated as underground belts.
+        else:
+            logging.info(f"Skipping {entity['name']}.")
+            entity = None
+            continue
 
-#     for ent in entities:
-#         name, w_, h_ = ent["name"], 1, 1
-#         is_dir = False
+        # Placement logic
+        logging.info(f"Placing {entity['name']}.")
+        # Determining the item's bounds.
+        lx, ty = get_entity_topleft(entity)
+        rx, by = lx + width, ty + height
+        # Placing the building on the matrix.
+        mats[lx:rx, ty:by, key] = X
+        mats[lx:rx, ty:by, channels.index('item')] = idx
+        
+        logging.info(f"Taking up: {ty}, {lx} to {by}, {rx}.")
+        if is_directional:
+            mats[lx:rx, ty:by, channels.index("direction")] = entity.get('direction', 0) + 1
 
-#         # ---------------- entity‑class → channel + class‑local id ----------
-#         if name.startswith("assembling-machine"):
-#             key, w_, h_, idx = 0, 3, 3, int(name[-1])          # assembler tier
-#         elif name in inserter_index:
-#             key, is_dir, idx = 1, True, inserter_index[name]
-#         elif name in belt_index:
-#             key, is_dir, idx = 2, True, belt_index[name]
-#             if "splitter" in name:
-#                 if ent.get("direction", 0) in (0, 4):
-#                     w_, h_ = 2, 1
-#                 else:
-#                     w_, h_ = 1, 2
-#         elif name in pole_index:
-#             key, idx = 3, pole_index[name]
-#             if name == "substation":
-#                 w_, h_ = 2, 2
-#         else:
-#             continue
+        # recipe
+        if key == 0 and "recipe" in entity:
+            mats[lx:rx, ty:by, channels.index("recipe")] = recipe_id[entity["recipe"]]
 
-#         # ---------------- place the entity’s footprint ---------------------
-#         lx, ty = get_entity_topleft(ent)
-#         rx, by = lx + w_, ty + h_
-#         mats[lx:rx, ty:by, key] = 1
-#         mats[lx:rx, ty:by, channels.index("item")] = idx
+    # NOTE: center_in_N doesn't seem to work.
+    if center:
+        N = max(w, h)
+        mats = center_in_N(matrix=mats, N=N)
+    return mats
 
-#         # direction
-#         if is_dir:
-#             mats[lx:rx, ty:by, channels.index("direction")] = ent.get("direction", 0) + 1
-
-#         # recipe
-#         if key == 0 and "recipe" in ent:
-#             mats[lx:rx, ty:by, channels.index("recipe")] = recipe_id[ent["recipe"]]
-
-#     if center:
-#         N = max(w, h)
-#         mats = center_in_N(mats, N)
-
-#     return mats
-
-
-# def _first_product_name(recipe_name: str) -> str | None:
-#     r = recipe_data.raw.get(recipe_name, {})
-#     if "products" in r:          # Factorio ≥0.18
-#         return r["products"][0]["name"]
-#     if "results" in r:           # some mods
-#         return r["results"][0]["name"]
-#     return r.get("result")       # legacy single‑field
 
 def _make_recipe_index(entities) -> dict[str, int]:
     """

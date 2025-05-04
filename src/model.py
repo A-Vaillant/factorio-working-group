@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class DeepQCNN(nn.Module):
-    def __init__(self, input_channels=7, output_channels=7):
+    def __init__(self, input_channels=8, output_channels=8):
         super(DeepQCNN, self).__init__()
         
         # First convolutional layer
