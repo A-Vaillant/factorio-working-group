@@ -1,4 +1,5 @@
-from torch.utils.data import DataLoader
+import numpy as np
+from torch.utils.data import Dataset, DataLoader
 
 from src.pipeline.loaders import FactoryLoader, MatrixDataset, collate_numpy_matrices
 from src.model import DeepQCNN
@@ -16,6 +17,36 @@ F = FactoryLoader
 M = MatrixDataset
 
 
+class AugmentedListDataset(Dataset):
+    def __init__(self, data_list, rotations=4):
+        self.data = data_list
+        self.num_original = len(data_list)
+        self.rotations = rotations  # Number of rotations (1=original, 2=+90°, 3=+180°, 4=+270°)
+    
+    def __len__(self):
+        return self.num_original * self.rotations
+    
+    def __getitem__(self, idx):
+        # Determine which original sample and which rotation
+        original_idx = idx % self.num_original
+        rotation_idx = idx // self.num_original
+        
+        # Get original data
+        X, c, Y = self.data[original_idx]
+        
+        # Apply rotation if needed
+        if rotation_idx > 0:
+            # Rotate X and Y by k*90 degrees
+            X = np.rot90(X, k=rotation_idx, axes=(0, 1))
+            Y = np.rot90(Y, k=rotation_idx, axes=(0, 1))
+            
+            # You might need to adjust 'c' based on the rotation
+            # if 'c' represents something that changes with rotation
+            # c = transform_label_with_rotation(c, rotation_idx)
+        
+        return X, c, Y
+    
+    
 dataloader = DataLoader(
         M, 
         batch_size=32, 
