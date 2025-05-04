@@ -1,8 +1,10 @@
 import csv, json, sys
 import random
 import logging
+import itertools
 
 import numpy as np
+import torch
 from torch.utils.data import IterableDataset
 from pathlib import Path
 
@@ -93,11 +95,13 @@ class FactoryLoader():
 
 # This should probably not bother with the filtering and just focus on having
 # Factories which have matrices inside them, no?
-class MatrixLoader(IterableDataset):
-    def __init__(self, iterable_obj,
-                 repr_version=2, center=False,
+class MatrixDataset(IterableDataset):
+    # An iterable dataset
+    def __init__(self, iterable_obj: FactoryLoader,
+                 repr_version=3, center=False,
                  filters=None,
-                 N=15):
+                 num_samples=None,
+                 N=20):
         self.io = iterable_obj
         self.version = repr_version
         self.center = center
@@ -105,13 +109,42 @@ class MatrixLoader(IterableDataset):
         if filters is None:
             filters = []
         self.filters = filters
+        self.num_samples = num_samples
 
     def __iter__(self):
         # Includes filtering early on.
         io = self.io
         for X in self.filters:
             io = filter(X, io)
-        return iter((f, f.get_matrix(dims=self.dims,
+        out = iter((f, f.get_matrix(dims=self.dims,
                                  repr_version=self.version,
                                  center=self.center,
                                  )) for f in io)
+        if self.num_samples is not None:
+            out = itertools.islice(out, 0, self.num_samples)
+        return out
+
+
+def collate_numpy_matrices(batch):
+    levels, conditions, actions = zip(*batch)
+    
+    # Stack levels (convert to tensor and change to CHW format)
+    levels_np = np.stack(levels)  # Shape: (batch_size, 20, 20, 7)
+    levels_tensor = torch.from_numpy(levels_np).permute(0, 3, 1, 2)  # Shape: (batch_size, 7, 20, 20)
+    
+    # Handle conditions (may be None)
+    valid_conditions = [c for c in conditions if c is not None]
+    if valid_conditions:
+        conditions_tensor = torch.tensor(valid_conditions, dtype=torch.float32)
+        has_condition = torch.ones(len(conditions), dtype=torch.bool)
+        for i, c in enumerate(conditions):
+            has_condition[i] = c is not None
+    else:
+        conditions_tensor = None
+        has_condition = torch.zeros(len(conditions), dtype=torch.bool)
+    
+    # Stack actions
+    actions_np = np.stack(actions)  # Shape: (batch_size, 20, 20, 7)
+    actions_tensor = torch.from_numpy(actions_np).permute(0, 3, 1, 2)  # Shape: (batch_size, 7, 20, 20)
+    
+    return levels_tensor, (conditions_tensor, has_condition), actions_tensor

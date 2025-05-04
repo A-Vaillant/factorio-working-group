@@ -10,6 +10,7 @@ from pathlib import Path
 from copy import deepcopy
 
 from src.pipeline import FactoryLoader
+from src.pipeline.datasets import datasets
 from src.representation import blueprint_to_opacity_matrices, map_entity_to_key, center_in_N, Factory
 
 
@@ -230,20 +231,6 @@ class EntityPuncher():
         y        = np.array([p[2] for p in pairs])
         return X_before, X_after, y
 
-# TODO: Move this.
-datasets = {
-    'av-redscience': 'txt/av',
-    'factorio-tech-json': 'json/factorio-tech',
-    'factorio-tech': 'csv/factorio-tech',
-    'factorio-codex': 'csv/factorio-codex',
-    'idan': 'csv/idan_blueprints.csv',
-}
-
-def load_dataset(dataset_name: str='av-redscience',
-                  **kwargs):
-    """ dataset_name: The name of a prepared dataset. 
-    """
-    return FactoryLoader(datasets[dataset_name])
     
 def load_training_data(dataset_name, **kwargs):
     fl = FactoryLoader(datasets[dataset_name], **kwargs)

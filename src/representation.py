@@ -237,15 +237,19 @@ class Factory:
     # @lru_cache
     def get_matrix(self, dims: tuple[int, int],
                 repr_version: int = REPR_VERSION,
+                return_tensor: bool=False,
                 **kwargs):
         if repr_version == 1:
-            return blueprint_to_opacity_matrices(self.blueprint, *dims, **kwargs)
+            mats = blueprint_to_opacity_matrices(self.blueprint, *dims, **kwargs)
         elif repr_version == 2:
-            return json_to_6channel_matrix(self.json, *dims, **kwargs)
+            mats = json_to_6channel_matrix(self.json, *dims, **kwargs)
         elif repr_version == 3:
-            return json_to_7channel_matrix(self.json, *dims, **kwargs)
+            mats = json_to_7channel_matrix(self.json, *dims, **kwargs)
         else:
             raise RepresentationError(f"Unknown repr_version {repr_version}")
+        if return_tensor:
+            mats = ...
+        return mats
 
 
 def trim_zero_edges(matrix,
