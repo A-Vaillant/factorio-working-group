@@ -143,12 +143,29 @@ class MatrixDataset(IterableDataset):
         return out
 
 
-def collate_numpy_matrices(batch):
+def collate_numpy_matrices_without_conditions(batch):
     levels, conditions, actions = zip(*batch)
     
     # Stack levels (convert to tensor and change to CHW format)
-    levels_np = np.stack(levels)  # Shape: (batch_size, 20, 20, 7)
-    levels_tensor = torch.from_numpy(levels_np).permute(0, 3, 1, 2)  # Shape: (batch_size, 7, 20, 20)
+    levels_np = np.stack(levels)  # Shape: (batch_size, 20, 20, C)
+    levels_np = levels_np.astype(np.float32)
+    levels_tensor = torch.from_numpy(levels_np).permute(0, 3, 1, 2)  # Shape: (batch_size, C, 20, 20)
+    
+    # Stack actions
+    actions_np = np.stack(actions)  # Shape: (batch_size, 20, 20, C)
+    actions_np = actions_np.astype(np.float32)
+    actions_tensor = torch.from_numpy(actions_np).permute(0, 3, 1, 2)  # Shape: (batch_size, C, 20, 20)
+    
+    return levels_tensor, actions_tensor
+
+
+def collate_numpy_matrices(batch):
+    levels, actions, conditions = zip(*batch)
+    
+    # Stack levels (convert to tensor and change to CHW format)
+    levels_np = np.stack(levels)  # Shape: (batch_size, 20, 20, C)
+    levels_np = levels_np.astype(np.float32)
+    levels_tensor = torch.from_numpy(levels_np).permute(0, 3, 1, 2)  # Shape: (batch_size, C, 20, 20)
     
     # Handle conditions (may be None)
     valid_conditions = [c for c in conditions if c is not None]
@@ -162,7 +179,8 @@ def collate_numpy_matrices(batch):
         has_condition = torch.zeros(len(conditions), dtype=torch.bool)
     
     # Stack actions
-    actions_np = np.stack(actions)  # Shape: (batch_size, 20, 20, 7)
-    actions_tensor = torch.from_numpy(actions_np).permute(0, 3, 1, 2)  # Shape: (batch_size, 7, 20, 20)
+    actions_np = np.stack(actions)  # Shape: (batch_size, 20, 20, C)
+    actions_np = actions_np.astype(np.float32)
+    actions_tensor = torch.from_numpy(actions_np).permute(0, 3, 1, 2)  # Shape: (batch_size, C, 20, 20)
     
-    return levels_tensor, (conditions_tensor, has_condition), actions_tensor
+    return levels_tensor, actions_tensor, conditions_tensor

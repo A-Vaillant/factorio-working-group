@@ -29,7 +29,7 @@ class QCNNTrainer:
         device='cuda' if torch.cuda.is_available() else 'cpu',
         log_dir='runs'
     ):
-        self.model = model.to(device)
+        self.model = model.to(device).float()
         self.device = device
         self.optimizer = optim.Adam(model.parameters(), lr=learning_rate)
         self.base_criterion = nn.MSELoss()
@@ -203,19 +203,21 @@ class AugmentedListDataset(Dataset):
         return self.num_original * self.rotations
     
     def __getitem__(self, idx):
-        # Determine which original sample and which rotation
+        if idx >= self.num_original * self.rotations:
+            raise IndexError()
+        
         original_idx = idx % self.num_original
         rotation_idx = idx // self.num_original
         
         # Get original data
+        assert(original_idx < self.num_original)
         X, c, Y = self.data[original_idx]
         
         # Apply rotation if needed
         if rotation_idx > 0:
-            # Rotate X and Y by k*90 degrees
-            X = np.rot90(X, k=rotation_idx, axes=(0, 1))
-            Y = np.rot90(Y, k=rotation_idx, axes=(0, 1))
-        return X, c, Y
+            X = np.rot90(X, k=rotation_idx, axes=(0, 1)).copy()
+            Y = np.rot90(Y, k=rotation_idx, axes=(0, 1)).copy()
+        return X, Y, c
 
 
 def prepare_dataset(dims=(20,20), repr_version=4):
@@ -241,7 +243,7 @@ def prepare_dataset(dims=(20,20), repr_version=4):
             Xs.append(x_m)
             Ys.append(y_m)
             cs.append(c_)
-    return (Xs, c, Ys)
+    return (Xs, cs, Ys)
 
 
 def split_dataloader(dataloader, val_split=0.2, random_seed=42):
@@ -275,6 +277,7 @@ def split_dataloader(dataloader, val_split=0.2, random_seed=42):
         train_dataset,
         batch_size=dataloader.batch_size,
         shuffle=True,
+        collate_fn=collate_numpy_matrices,
         num_workers=dataloader.num_workers,
         pin_memory=dataloader.pin_memory,
         drop_last=dataloader.drop_last
@@ -284,6 +287,7 @@ def split_dataloader(dataloader, val_split=0.2, random_seed=42):
         val_dataset,
         batch_size=dataloader.batch_size,
         shuffle=False,  # No need to shuffle validation data
+        collate_fn=collate_numpy_matrices,
         num_workers=dataloader.num_workers,
         pin_memory=dataloader.pin_memory,
         drop_last=dataloader.drop_last

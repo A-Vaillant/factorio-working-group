@@ -1,4 +1,9 @@
+import hashlib
+import os
+from torch.utils.data import Dataset
+import pickle
 from src.pipeline import FactoryLoader
+
 
 datasets = {
     'av-redscience': 'txt/av',
@@ -7,6 +12,114 @@ datasets = {
     'factorio-codex': 'csv/factorio-codex',
     'idan': 'csv/idan_blueprints.csv',
 }
+
+class ChunkedDiskCachedDatasetWrapper(Dataset):
+    def __init__(self, base_dataset, cache_dir='dataset_cache', chunk_size=100, force_rebuild=False):
+        self.base_dataset = base_dataset
+        self.cache_dir = cache_dir
+        self.chunk_size = chunk_size
+        
+        # Create a unique signature for this dataset
+        dataset_signature = f"{type(base_dataset).__name__}_{len(base_dataset)}"
+        self.signature = hashlib.md5(dataset_signature.encode()).hexdigest()
+        
+        # Create cache directory
+        os.makedirs(cache_dir, exist_ok=True)
+        
+        # Store length
+        self.length = len(base_dataset)
+        
+        # Initialize cache structures
+        self.chunk_map = {}  # Maps index to (chunk_id, offset)
+        self.cached_chunks = {}  # Maps chunk_id to file path
+        self.loaded_chunks = {}  # In-memory cache of loaded chunks
+        
+        # Create chunk mapping
+        for i in range(self.length):
+            chunk_id = i // chunk_size
+            offset = i % chunk_size
+            self.chunk_map[i] = (chunk_id, offset)
+        
+        # Scan existing cache
+        self._scan_cache()
+        
+        # Clear if forced
+        if force_rebuild:
+            self._clear_cache()
+    
+    def _get_chunk_path(self, chunk_id):
+        return os.path.join(self.cache_dir, f"{self.signature}_chunk_{chunk_id}.pkl")
+    
+    def _scan_cache(self):
+        """Scan the cache directory to find already cached chunks."""
+        prefix = f"{self.signature}_chunk_"
+        for filename in os.listdir(self.cache_dir):
+            if filename.startswith(prefix) and filename.endswith(".pkl"):
+                try:
+                    chunk_id = int(filename[len(prefix):-4])
+                    self.cached_chunks[chunk_id] = os.path.join(self.cache_dir, filename)
+                except ValueError:
+                    continue
+    
+    def _clear_cache(self):
+        """Clear all cached chunks."""
+        for chunk_id, path in self.cached_chunks.items():
+            if os.path.exists(path):
+                os.remove(path)
+        self.cached_chunks = {}
+        self.loaded_chunks = {}
+    
+    def _load_chunk(self, chunk_id):
+        """Load a chunk into memory or build it if not cached."""
+        if chunk_id in self.loaded_chunks:
+            return
+            
+        chunk_path = self._get_chunk_path(chunk_id)
+        
+        # If cached on disk, load it
+        if chunk_id in self.cached_chunks:
+            with open(chunk_path, 'rb') as f:
+                self.loaded_chunks[chunk_id] = pickle.load(f)
+            return
+            
+        # Otherwise, build the chunk
+        chunk_data = []
+        start_idx = chunk_id * self.chunk_size
+        end_idx = min(start_idx + self.chunk_size, self.length)
+        
+        for i in range(start_idx, end_idx):
+            item = self.base_dataset[i]
+            chunk_data.append(item)
+        
+        # Save to disk and memory
+        with open(chunk_path, 'wb') as f:
+            pickle.dump(chunk_data, f)
+        
+        self.cached_chunks[chunk_id] = chunk_path
+        self.loaded_chunks[chunk_id] = chunk_data
+        
+        # Simple LRU - keep only 3 chunks in memory
+        if len(self.loaded_chunks) > 3:
+            oldest = next(iter(self.loaded_chunks))
+            if oldest != chunk_id:  # Don't remove the one we just loaded
+                del self.loaded_chunks[oldest]
+    
+    def __len__(self):
+        return self.length
+    
+    def __getitem__(self, idx):
+        if idx >= self.length:
+            raise IndexError("Index out of bounds")
+            
+        # Get chunk info
+        chunk_id, offset = self.chunk_map[idx]
+        
+        # Ensure chunk is loaded
+        self._load_chunk(chunk_id)
+        
+        # Return the item
+        return self.loaded_chunks[chunk_id][offset]
+    
 
 def load_dataset(dataset_name: str='av-redscience',
                   **kwargs):

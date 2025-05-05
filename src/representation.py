@@ -596,7 +596,7 @@ def json_to_8channel_matrix(js: dict, w, h,
             entity['position']['x'] -= left
             entity['position']['y'] -= top
 
-    mats = np.zeros((w + 1, h + 1, len(channels)), dtype=np.int16)
+    mats = np.zeros((w, h, len(channels)), dtype=np.int16)
 
     # build the recipe‑id map once
     recipe_id = _make_recipe_index(entities)
