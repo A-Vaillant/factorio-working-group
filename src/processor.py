@@ -1,18 +1,21 @@
 """
 processor.py
-
-
 """
 import json, random
 import numpy as np
 import logging
 from pathlib import Path
+import itertools
 from copy import deepcopy
 
 from src.pipeline import FactoryLoader
 from src.pipeline.datasets import datasets
-from src.representation import blueprint_to_opacity_matrices, map_entity_to_key, center_in_N, Factory
+from src.representation import (blueprint_to_opacity_matrices,
+                                map_entity_to_key, center_in_N)
 
+
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 def make_rotations(matrix, hwc=True):
     # Assumption: Matrix is in HWC form.
@@ -95,43 +98,30 @@ def make_translations(matrix, count=5):
     
 
 class EntityPuncher():
-    channels = ('assembler', 'inserter', 'belt', 'pole')
+    channels = ['assembler', 'inserter', 'belt', 'pole',
+                'direction', 'recipe', 'item', 'sourcesink']
 
-    def __init__(self, factory, N=20):
-        self.blueprint = factory.blueprint
-        self.N = N
+    def __init__(self, factory):
+        # We keep updating the factory object held by the puncher.
+        self.original_factory = factory
+        self.factory = deepcopy(factory)
+        self.removed_positions = set()
+        logger.debug(f"Initialized EntityPuncher with {len(self.factory.blueprint.entities)} entities")
 
-    def _starting_blueprint(self):
-        """
-        Your 'Starting Set':
-        - One random assembler
-        - Plus maybe a few other random entities
-        """
-        bp = deepcopy(self.blueprint)
-        assemblers = [e for e in bp.entities if map_entity_to_key(e)=='assembler']
+    def _save_an_assembler(self):
+        assemblers = [e for e in self.original_factory.blueprint.entities if map_entity_to_key(e)=='assembler']
         # pick one assembler at random
         chosen = random.choice(assemblers)
-        bp.entities = [chosen] + random.sample(
-            [e for e in bp.entities if e!=chosen], 
-            k=min(3, len(bp.entities)-1)
-        )
-        return bp
-
-    def is_valid_start_state(self, blueprint, max_total_entities=4):
-        """Returns True if exactly 1 assembler and only a few total entities exist."""
-        assembler_count = 0
-        total_count = 0
-        for e in blueprint.entities:
-            if self.map_entity_to_key(e) is None:
-                continue
-            total_count += 1
-            if self.map_entity_to_key(e) == 'assembler':
-                assembler_count += 1
-        return assembler_count == 1 and total_count <= max_total_entities
+        position = tuple(chosen.tile_position._data)
+        self.removed_positions.add(position)
+        logger.debug(f"In _set_final_blueprint, marking position {position} as removed")
+        # Simply chooses a random assembler and pretends like we already removed it. Good job!
 
     def _sort_assemblers(self, entities):
+        assemblers = [e for e in entities if map_entity_to_key(e)=='assembler']
+        logger.debug(f"Sorting {len(assemblers)} assemblers")
         return sorted(
-            [e for e in entities if map_entity_to_key(e)=='assembler'],
+            assemblers,
             key=lambda e: getattr(e, 'recipe', getattr(e, 'entity_number', 0))
         )
 
@@ -177,82 +167,59 @@ class EntityPuncher():
         return [e for chain in chains for e in chain]
 
 
-    def _inserters_ready(self, entities, removed_ids):
-        ready = []
-        for e in entities:
-            if map_entity_to_key(e)!='inserter': continue
-            # if any neighbor (pos ±1) has been removed
-            for dx,dy in [(1,0),(-1,0),(0,1),(0,-1)]:
-                p = (e.tile_position[0]+dx, e.tile_position[1]+dy)
-                if p in removed_ids:
-                    ready.append(e)
-                    break
-        return ready
+    def _inserters_ready(self, entities):
+        return sorted(
+            [e for e in entities if map_entity_to_key(e)=='inserter'],
+            key=lambda e: getattr(e, 'entity_number', 0)
+        )
 
     def _poles_random(self, entities):
         poles = [e for e in entities if map_entity_to_key(e)=='pole']
         random.shuffle(poles)
         return poles
 
-    def _next_removal_order(self, entities, removed_ids):
+    def _next_removal_order(self, entities):
+        logger.debug(f"Starting _next_removal_order with {len(entities)} entities")
+        logger.debug(f"Currently {len(self.removed_positions)} positions in removed_positions set: {self.removed_positions}")
+
         # yield assemblers, then belts, then inserters, then poles
-        for e in self._sort_assemblers(entities):
-            if id(e) not in removed_ids: yield e
-        for e in self._belt_chains(entities):
-            if id(e) not in removed_ids: yield e
-        for e in self._inserters_ready(entities, removed_ids):
-            if id(e) not in removed_ids: yield e
-        for e in self._poles_random(entities):
-            if id(e) not in removed_ids: yield e
-
-    def generate_state_action_pairs(self, num_pairs: int):
-        """
-        Implements steps 1–6 from the paper.
-        Returns lists of (before_mat, after_mat, repair_action_idx).
-        """
-        pairs = []
-        # 1) Start from a random 'starting blueprint'
-        # TODO we should start from an initial blueprint and end at a starting state
-        current_bp = self._starting_blueprint()
-        # current_bp = self.blueprint
-        removed_ids = set()
-
-        while len(pairs) < num_pairs:
-            entities = current_bp.entities
-            # 2) get next entity to remove in 'Path of Destruction' order
-            try:
-                to_remove = next(self._next_removal_order(entities, removed_ids))
-            except StopIteration:
-                # no more possible removals → restart from a fresh starting point
-                current_bp = self._starting_blueprint()
-                removed_ids.clear()
+        for e in itertools.chain(self._sort_assemblers(entities),
+                                 self._belt_chains(entities),
+                                 self._inserters_ready(entities),
+                                 self._poles_random(entities)):
+            # Note; why can't I just check entity inclusion directly...?
+            position = tuple(e.tile_position._data)
+            logger.debug(f"Considering entity at position {position}, type: {map_entity_to_key(e)}")
+            if position not in self.removed_positions:
+                logger.debug(f"Yielding entity at position {position} for removal")
+                yield e
+            else:
+                logger.debug(f"SKIPPING entity at position {position} - already in removed_positions")
                 continue
 
-            # find its channel idx
-            ch = self.channels.index(map_entity_to_key(to_remove))
-            pos = to_remove.tile_position
+    def generate_state_action_pairs(self, num_pairs: int=None):
+        """
+        Returns lists of (before_factory, after_factory, repair_action_idx).
+        """
+        pairs = []
 
-            # 3) record 'before'
-            before_mat = center_in_N(blueprint_to_opacity_matrices(current_bp), N=self.N)
+        self._save_an_assembler()
+        entity_iterator =  self._next_removal_order(self.factory.blueprint.entities)
+        if num_pairs is not None:
+            entity_iterator = itertools.islice(entity_iterator, 0, num_pairs)
+        for removable in entity_iterator:
+            ch = self.channels.index(map_entity_to_key(removable))
+
+            # record 'before'
+            before_factory = deepcopy(self.factory)
             repair_action = ch
 
-            # 4) apply removal
-            bp_after = deepcopy(current_bp)
-            for i,e in enumerate(bp_after.entities):
-                if e.tile_position == pos and map_entity_to_key(e)==self.channels[ch]:
-                    bp_after.entities.pop(i)
-                    break
-            removed_ids.add(tuple(pos))  # mark this pos as 'removed' for inserter logic
+            self.removed_positions.add(tuple(removable.tile_position._data))
+            self.factory.blueprint.entities.remove(removable)
 
-            # 5) check your noise/starting distribution—here we simply accept all
-            #    (you can plug in your own predicate, e.g. count_entities(bp_after)>k)
+            after_factory = deepcopy(self.factory)
 
-            # 6) record the pair
-            after_mat = center_in_N(blueprint_to_opacity_matrices(bp_after), N=self.N)
-            pairs.append((before_mat, after_mat, repair_action))
-
-            # move on—continue destroying on top of this state
-            current_bp = bp_after
+            pairs.append((before_factory, after_factory, repair_action))
 
         # unpack into arrays
         X_before = np.stack([p[0] for p in pairs], axis=0)

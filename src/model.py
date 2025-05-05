@@ -25,7 +25,7 @@ class DeepQCNN(nn.Module):
         self.dense2 = nn.Linear(512, output_channels * 20 * 20)
         
     def forward(self, level, condition=None):
-        # Level input processing: level shape should be [batch_size, 7, 20, 20]
+        # Level input processing: level shape should be [batch_size, 8, 20, 20]
         x = F.relu(self.conv1(level))
         x = self.maxpool(x)  # Shape: [batch_size, 32, 10, 10]
         
@@ -46,8 +46,8 @@ class DeepQCNN(nn.Module):
         x = F.relu(self.dense1(x))
         x = self.dense2(x)
         
-        # Reshape to output format [batch_size, 7, 20, 20]
-        action = x.view(x.size(0), 7, 20, 20)
+        # Reshape to output format [batch_size, 8, 20, 20]
+        action = x.view(x.size(0), 8, 20, 20)
         
         return action
 
