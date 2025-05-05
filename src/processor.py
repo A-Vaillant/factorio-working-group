@@ -8,9 +8,10 @@ from pathlib import Path
 import itertools
 from copy import deepcopy
 
+from draftsman.blueprintable import get_blueprintable_from_string
 from src.pipeline import FactoryLoader
 from src.pipeline.datasets import datasets
-from src.representation import (blueprint_to_opacity_matrices,
+from src.representation import (Factory,
                                 map_entity_to_key, center_in_N)
 
 
@@ -95,7 +96,12 @@ def make_translations(matrix, count=5):
 #                                   self.channels.index(channel_name),
 #                                   entity.tile_position])
 #         return root_sequence
-    
+
+def copy_factory(factory):
+    # Used to avoid a deepcopy bug.
+    bp = get_blueprintable_from_string(factory.blueprint.to_string())
+    return Factory.from_blueprint(bp)
+
 
 class EntityPuncher():
     channels = ['assembler', 'inserter', 'belt', 'pole',
@@ -104,9 +110,10 @@ class EntityPuncher():
     def __init__(self, factory):
         # We keep updating the factory object held by the puncher.
         self.original_factory = factory
-        self.factory = deepcopy(factory)
+        factory.blueprint.wires = []
+        self.blueprint = deepcopy(factory.blueprint)
         self.removed_positions = set()
-        logger.debug(f"Initialized EntityPuncher with {len(self.factory.blueprint.entities)} entities")
+        logger.debug(f"Initialized EntityPuncher with {len(self.blueprint.entities)} entities")
 
     def _save_an_assembler(self):
         assemblers = [e for e in self.original_factory.blueprint.entities if map_entity_to_key(e)=='assembler']
@@ -204,20 +211,20 @@ class EntityPuncher():
         pairs = []
 
         self._save_an_assembler()
-        entity_iterator =  self._next_removal_order(self.factory.blueprint.entities)
+        entity_iterator =  self._next_removal_order(self.blueprint.entities)
         if num_pairs is not None:
             entity_iterator = itertools.islice(entity_iterator, 0, num_pairs)
         for removable in entity_iterator:
             ch = self.channels.index(map_entity_to_key(removable))
 
             # record 'before'
-            before_factory = deepcopy(self.factory)
+            before_factory = Factory.from_blueprint(deepcopy(self.blueprint))
             repair_action = ch
 
             self.removed_positions.add(tuple(removable.tile_position._data))
-            self.factory.blueprint.entities.remove(removable)
+            self.blueprint.entities.recursive_remove(removable)
 
-            after_factory = deepcopy(self.factory)
+            after_factory = Factory.from_blueprint(deepcopy(self.blueprint))
 
             pairs.append((before_factory, after_factory, repair_action))
 
@@ -226,58 +233,3 @@ class EntityPuncher():
         X_after  = np.stack([p[1] for p in pairs], axis=0)
         y        = np.array([p[2] for p in pairs])
         return X_before, X_after, y
-
-    
-def load_training_data(dataset_name, **kwargs):
-    fl = FactoryLoader(datasets[dataset_name], **kwargs)
-    Xs = []
-    y = []
-    indices = []
-    for k, v in fl.factories.items():
-        ep = EntityPuncher(v)
-        rs = ep.get_removal_sequences(ignore_electricity=True)
-        try:
-            v_mat = center_in_N(blueprint_to_opacity_matrices(v), N=20)
-        except ValueError:
-            continue
-        # print(len(rs))
-        for (holepunched, ix, pos) in rs:
-            # Map the factory to a matrix, then organize.
-            hp_mat = center_in_N(blueprint_to_opacity_matrices(holepunched), N=20)
-            Xs.append(hp_mat)
-            y.append(v_mat)
-            indices.append(ix)
-    return np.array(Xs), y, np.array(indices)
-
-# if __name__ == "__main__":
-#     import matplotlib.pyplot as plt
-
-#     fl = FactoryLoader(datasets["av-redscience"])
-#     k, factory = next(iter(fl.factories.items()))
-#     print("Loaded factory:", k)
-
-#     ep = EntityPuncher(factory)
-#     X_before, X_after, y = ep.generate_state_action_pairs(num_pairs=5)
-#     print("Generated shapes:", X_before.shape, X_after.shape, y.shape)
-
-#     def visualize_sample(before, after, label, index):
-#         fig, axes = plt.subplots(2, 4, figsize=(14, 6))
-#         channel_names = ['Assembler', 'Inserter', 'Belt', 'Pole']
-#         for i in range(4):
-#             axes[0, i].imshow(before[:, :, i], cmap='gray')
-#             axes[0, i].set_title(f"Before - {channel_names[i]}")
-#             axes[0, i].axis('off')
-
-#             axes[1, i].imshow(after[:, :, i], cmap='gray')
-#             axes[1, i].set_title(f"After - {channel_names[i]}")
-#             axes[1, i].axis('off')
-
-#         plt.suptitle(f"Sample {index+1} | Removed Channel Index: {label}")
-#         plt.tight_layout()
-#         plt.show()
-
-#     # Show all 5 samples
-#     print(len(X_before))
-#     for i in range(len(X_before)):
-#         visualize_sample(X_before[i], X_after[i], y[i], i)
-

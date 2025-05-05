@@ -217,12 +217,15 @@ class Factory:
     @classmethod
     def from_str(cls, input: str):
         j = string_to_JSON(input)
+        # print(j['blueprint'].keys())
         if 'blueprint' not in j:  # not a proper blueprint
             if 'blueprint-book' in j:  # this is a BOOK
                 raise RepresentationError("Attempted to represent a blueprint book as a Factory.")
             else:
                 logging.debug(j)
                 raise RepresentationError("Failed for an unknown issue.")
+        # if 'wires' in j['blueprint']:
+        #     del(j['blueprint']['wires'])
         return Factory(json=j)        
         
     # note: you can just do list[cls] in Python 3.10+. a thing to consider in setting dependencies.
