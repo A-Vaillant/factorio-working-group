@@ -659,7 +659,7 @@ def _make_recipe_index(entities) -> dict[str, int]:
     numbered 0, 1, 2… in order of first appearance (ignores icons).
     """
     index: dict[str, int] = {}
-    next_id = 0
+    next_id = 1
     for e in entities:
         r = e.get("recipe")
         if r is None or r in index:
