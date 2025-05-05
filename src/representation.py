@@ -20,6 +20,8 @@ from draftsman.data import items
 
 def get_item_id_from_name(item_name: str) -> int:
     # Note: Wooden Chests have an index of 0, so we have to offset everything.
+    if item_name == 'ee-infinity-loader':
+        item_name = 'underground-belt'
     arr_index = [i for i in items.raw.keys()].index(item_name)
     return arr_index + 1
 

@@ -12,4 +12,4 @@ def load_dataset(dataset_name: str='av-redscience',
                   **kwargs):
     """ dataset_name: The name of a prepared dataset. 
     """
-    return FactoryLoader(datasets[dataset_name])
+    return FactoryLoader(datasets[dataset_name], **kwargs)

@@ -19,12 +19,18 @@ class TestEntityPuncher(unittest.TestCase):
     def setUp(self):
         with open('data/raw/txt/av/3machine.txt') as file:
             self.f = Factory.from_str(file.read())
-    
+        self.ep = EntityPuncher(self.f)
+
+    def test_basic_factory_functionality(self):
+        self.assertIn('name', self.ep.original_factory.json['blueprint']['entities'][0])
+        self.assertIn('name', self.ep.factory.json['blueprint']['entities'][0])
+
     def test_punchsequence(self):
-        ep = EntityPuncher(self.f)
-        before, after, cs = ep.generate_state_action_pairs()
+        before, after, cs = self.ep.generate_state_action_pairs()
         for b, a, c in zip(before, after, cs):
             self.assertEqual(len(b.blueprint.entities)-1, len(a.blueprint.entities))
+            self.assertIn('name', a.json['blueprint']['entities'][0])
+            self.assertIn('name', b.json['blueprint']['entities'][0])
         
 
 if __name__ == '__main__':

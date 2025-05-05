@@ -8,10 +8,11 @@ import torch
 from torch.utils.data import IterableDataset
 from pathlib import Path
 
+from draftsman.blueprintable import Blueprintable, get_blueprintable_from_string
 from draftsman.error import MalformedBlueprintStringError
 from draftsman.utils import string_to_JSON
 
-from src.representation import Factory, recursive_json_parse
+from src.representation import Factory, recursive_json_parse, recursive_blueprint_book_parse
 
 # TODO: Move this to some kind of configuration.
 data_root = Path('data')
@@ -19,7 +20,9 @@ data_root = Path('data')
 
 class FactoryLoader():
     def __init__(self, raw_data_src,
-                 update_direction: bool=True, base_path=data_root):
+                 update_direction: bool=False,
+                 base_path=data_root,
+                 use_json: bool=True):
         # We're gonna use raw/txt/av here.
         loading_root = (base_path / 'raw') / raw_data_src
         self.factories = dict()
@@ -32,8 +35,13 @@ class FactoryLoader():
                 manidata = json.load(mf)
             for k, v in manidata['data_files'].items():
                 with (loading_root / v).open() as bfile:
-                    v = string_to_JSON(bfile.read())
-                self.update_factories(k, v)
+                    bpstring = bfile.read()
+                    if use_json:
+                        v = string_to_JSON(bpstring)
+                        self.update_factories_via_json(k, v)
+                    else:
+                        v = get_blueprintable_from_string(bpstring)
+                        self.update_factories_via_blueprintable(k, v)
 
         elif 'csv' in str(raw_data_src):  # csv loader
             csv.field_size_limit(sys.maxsize)
@@ -75,7 +83,7 @@ class FactoryLoader():
         #             except AttributeError:
         #                 pass
    
-    def update_factories(self, k: str,
+    def update_factories_via_json(self, k: str,
                          v: dict):
         vs = []
         vs += recursive_json_parse(v)
@@ -84,7 +92,17 @@ class FactoryLoader():
                 self.factories[f"{k}-{ix}"] = Factory(json=v)
         else:
             self.factories[k] = Factory(json=v)
-        
+    
+    def update_factories_via_blueprintable(self, k: str,
+                                           v: Blueprintable):
+        vs = []
+        vs += recursive_blueprint_book_parse(v)
+        if len(vs) > 1:
+            for ix, v in enumerate(vs):
+                self.factories[f"{k}-{ix}"] = Factory.from_blueprint(v)
+        else:
+            self.factories[k] = Factory.from_blueprint(v)
+
     def __iter__(self):
         # Lets you iterate through the Blueprints by just iterating over the Loader.
         return iter(self.factories.values())

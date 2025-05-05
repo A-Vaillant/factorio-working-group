@@ -14,7 +14,7 @@ from src.representation import (blueprint_to_opacity_matrices,
                                 map_entity_to_key, center_in_N)
 
 
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 def make_rotations(matrix, hwc=True):
