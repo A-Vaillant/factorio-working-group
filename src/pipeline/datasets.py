@@ -46,6 +46,78 @@ class ChunkedDiskCachedDatasetWrapper(Dataset):
         # Clear if forced
         if force_rebuild:
             self._clear_cache()
+
+    @classmethod
+    def from_cache(cls, cache_dir='dataset_cache'):
+        """
+        Create a dataset instance directly from cache without the original dataset.
+        
+        Args:
+            cache_dir: Directory where the dataset is cached
+            
+        Returns:
+            A new instance of ChunkedDiskCachedDatasetWrapper loaded from cache
+        """
+        # Create a new instance without calling __init__
+        instance = cls.__new__(cls)
+        instance.cache_dir = cache_dir
+        instance.loaded_chunks = {}
+        
+        # Find all chunk files
+        chunk_files = []
+        for filename in os.listdir(cache_dir):
+            if filename.endswith(".pkl") and "chunk_" in filename:
+                chunk_files.append(os.path.join(cache_dir, filename))
+        
+        if not chunk_files:
+            raise ValueError(f"No cached chunks found in {cache_dir}")
+        
+        # Extract signature from filenames
+        # Format: {signature}_chunk_{chunk_id}.pkl
+        signature = os.path.basename(chunk_files[0]).split('_chunk_')[0]
+        instance.signature = signature
+        
+        # Sort chunk files by number and extract IDs
+        chunk_files_with_ids = []
+        for file_path in chunk_files:
+            # Extract chunk ID from filename
+            filename = os.path.basename(file_path)
+            chunk_id = int(filename.split('_chunk_')[1].split('.')[0])
+            chunk_files_with_ids.append((chunk_id, file_path))
+        
+        chunk_files_with_ids.sort()  # Sort by chunk ID
+        
+        # Load the first chunk to figure out chunk size
+        with open(chunk_files_with_ids[0][1], 'rb') as f:
+            first_chunk = pickle.load(f)
+            chunk_size = len(first_chunk)
+        
+        # If there's only one chunk, length is just that chunk's length
+        if len(chunk_files_with_ids) == 1:
+            total_length = len(first_chunk)
+        else:
+            # Otherwise, check the last chunk (might be smaller)
+            with open(chunk_files_with_ids[-1][1], 'rb') as f:
+                last_chunk = pickle.load(f)
+            # Calculate total length
+            total_length = chunk_size * (len(chunk_files_with_ids) - 1) + len(last_chunk)
+        
+        # Initialize other required fields
+        instance.length = total_length
+        instance.chunk_size = chunk_size
+        instance.cached_chunks = {chunk_id: path for chunk_id, path in chunk_files_with_ids}
+        
+        # Create chunk mapping
+        instance.chunk_map = {}
+        for i in range(total_length):
+            chunk_id = i // chunk_size
+            offset = i % chunk_size
+            instance.chunk_map[i] = (chunk_id, offset)
+        
+        # No base dataset needed
+        instance.base_dataset = None
+        
+        return instance
     
     def _get_chunk_path(self, chunk_id):
         return os.path.join(self.cache_dir, f"{self.signature}_chunk_{chunk_id}.pkl")
