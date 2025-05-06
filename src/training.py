@@ -32,7 +32,7 @@ class QCNNTrainer:
         self.model = model.to(device).float()
         self.device = device
         self.optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-        self.base_criterion = nn.MSELoss()
+        self.base_criterion = nn.L1Loss()
         
         # Set up TensorBoard logging
         current_time = datetime.now().strftime('%b%d_%H-%M-%S')
