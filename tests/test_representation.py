@@ -2,13 +2,12 @@ import unittest
 import numpy as np
 from unittest.mock import MagicMock, patch
 from draftsman.blueprintable import get_blueprintable_from_string
-from src.representation import blueprint_to_opacity_matrices
 import io
 import sys
 import json
 
 # Import the modules to test
-from src.representation import (
+from representation import (
     map_entity_to_key, Factory, recursive_json_parse, 
     recursive_blueprint_book_parse, bound_bp_by_entities,
     RepresentationError, trim_zero_edges, center_in_N,

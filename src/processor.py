@@ -9,10 +9,8 @@ import itertools
 from copy import deepcopy
 
 from draftsman.blueprintable import get_blueprintable_from_string
-from src.pipeline import FactoryLoader
-from src.pipeline.datasets import datasets
 from src.representation import (Factory,
-                                map_entity_to_key, center_in_N)
+                                map_entity_to_key)
 
 
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -110,7 +108,7 @@ class EntityPuncher():
     def __init__(self, factory):
         # We keep updating the factory object held by the puncher.
         self.original_factory = factory
-        factory.blueprint.wires = []
+        factory.blueprint.wires = []  # Clear associations, as we don't use them.
         self.blueprint = deepcopy(factory.blueprint)
         self.removed_positions = set()
         logger.debug(f"Initialized EntityPuncher with {len(self.blueprint.entities)} entities")

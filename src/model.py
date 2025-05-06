@@ -33,7 +33,7 @@ class DeepQCNN(nn.Module):
         x = F.relu(self.conv3(x))  # Shape: [batch_size, 64, 10, 10]
         
         # Flatten
-        x = x.view(x.size(0), -1)  # Shape: [batch_size, 64 * 10 * 10]
+        x = x.contiguous().view(x.size(0), -1)  # Shape: [batch_size, 64 * 10 * 10]
         
         # Concatenate condition if provided
         if condition is not None:
@@ -50,3 +50,15 @@ class DeepQCNN(nn.Module):
         action = x.view(x.size(0), 8, 20, 20)
         
         return action
+    
+    def predict(self, X, c):
+        """Make a prediction with thresholding"""
+        self.eval()
+        with torch.no_grad():
+            # Get raw outputs
+            raw_outputs = self(X, c)
+            
+            # Apply thresholding
+            thresholded_outputs = (raw_outputs > 0.5).float()
+            
+            return thresholded_outputs

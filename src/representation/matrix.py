@@ -1,127 +1,52 @@
-""" representation.py
-
-Takes a Blueprint object and returns something you can do some good old fashioned machine learning on."""
-
+""" matrix.py
+Contains the representation code for numpy matrices.
+"""
 import numpy as np
-import math
-from draftsman.blueprintable import Blueprint, Blueprintable, get_blueprintable_from_JSON, get_blueprintable_from_string
-from draftsman.utils import string_to_JSON
-from dataclasses import dataclass
-from typing import Optional
-from functools import lru_cache
-
 import logging
+from draftsman.data import entities
+from draftsman.blueprintable import Blueprint
+
+from .utils import (bound_bp_by_entities,
+                    bound_bp_by_json,
+                    get_entity_topleft,
+                    get_item_id_from_name)
+
 
 # You surely will not regret putting a global variable in your representation module.
 REPR_VERSION = 4
 
-from draftsman.data import recipes as recipe_data
-from draftsman.data import items
 
-def get_item_id_from_name(item_name: str) -> int:
-    # Note: Wooden Chests have an index of 0, so we have to offset everything.
-    if item_name == 'ee-infinity-loader':
-        item_name = 'underground-belt'
-    arr_index = [i for i in items.raw.keys()].index(item_name)
-    return arr_index + 1
+inserter_index = {k: ix+1 for ix, k in enumerate(entities.inserters)}
+belt_index = {
+    "transport-belt": 1,
+    "fast-transport-belt": 2,
+    "express-transport-belt": 3,
+    "turbo-transport-belt": 4,
+}
+underground_index = {
+    "underground-belt": 1,
+    "fast-underground-belt": 2,
+    "express-underground-belt": 3,
+    "turbo-underground-belt": 4,
+}
+splitter_index = {
+    "splitter": 1,
+    "fast-splitter": 2,
+    "express-splitter": 3,
+    "turbo-splitter": 4,
+}
+belt_index.update(underground_index)
+belt_index.update(splitter_index)
+pole_index = {
+    'small-electric-pole': 1,
+    'medium-electric-pole': 2,
+    'large-electric-pole': 3,
+    'substation': 4
+}
+# Ignores the center point. So for each dimension, we can move that many squares away.
+pole_radius = [2, 3, 1, 8]
 
-def get_item_name_from_id(item_id: int) -> str:
-    arr_name = [i for i in items.raw.keys()][item_id - 1]
-    return arr_name
-
-def _first_product_name(recipe_name: str) -> str | None:
-    """Return the name of the first product (if any) of a recipe."""
-    r = recipe_data.raw.get(recipe_name, {})
-    if "products" in r:             # Factorio ≥0.18 style
-        return r["products"][0]["name"]
-    if "results" in r:              # Some mods / prototypes
-        return r["results"][0]["name"]
-    return r.get("result")          # Legacy single‑result field
-
-
-def find_bounding_box(matrix):
-    """
-    Find the bounding box of non-zero elements across all channels of an HWC matrix.
-    
-    Args:
-        matrix: NumPy array with shape (height, width, channels)
-        
-    Returns:
-        tuple: (top, left, bottom, right) coordinates of bounding box
-    """
-    # Check if matrix is in HWC format
-    if len(matrix.shape) != 3:
-        raise ValueError("Input must be a 3D array in HWC format")
-    
-    # Combine all channels using logical OR to find any non-zero pixels
-    # This creates a 2D mask where a pixel is True if any channel has a non-zero value
-    mask = np.any(matrix != 0, axis=2)
-    
-    # Find non-zero rows and columns
-    non_zero_rows = np.where(np.any(mask, axis=1))[0]
-    non_zero_cols = np.where(np.any(mask, axis=0))[0]
-    
-    # If no non-zero elements are found
-    if len(non_zero_rows) == 0 or len(non_zero_cols) == 0:
-        return (0, 0, 0, 0)
-    
-    # Get the bounding box coordinates
-    top = non_zero_rows.min()
-    bottom = non_zero_rows.max()
-    left = non_zero_cols.min()
-    right = non_zero_cols.max()
-    
-    return (top, left, bottom, right)
-
-
-def get_entity_topleft(entity):
-    # Uses Draftsman to get some data, returns topleft coords.
-    from draftsman.data import entities as entity_data
-    pos = entity['position']
-    if entity['name'] == 'ee-infinity-loader':  # Custom modded sink/source object.
-        (l, t), (r, b) = [-0.4, -0.4], [0.4, 0.4]
-    else:
-        raw_entity = entity_data.raw.get(entity['name'])
-        (l, t), (r, b) = raw_entity['selection_box']
-        if raw_entity is None:
-            return
-    return (round(pos['x']+l),
-            round(pos['y']+t))
-
-def get_entity_bottomright(entity):
-    # Uses Draftsman to get some data, returns topleft coords.
-    from draftsman.data import entities as entity_data
-    pos = entity['position']
-    raw_entity = entity_data.raw.get(entity['name'])
-    if raw_entity is None:
-        return
-    (l, t), (r, b) = raw_entity['selection_box']
-    return (round(pos['x']+r),
-            round(pos['y']+b))
-
-
-def recursive_json_parse(json_bp: dict) -> list[dict]:
-    if 'blueprint' in json_bp:
-        # it's a blueprint!
-        return [json_bp]
-    # it's not.
-    elif not 'blueprint_book' in json_bp:
-        # It's something ELSE. SKIP IT.
-        return []
-    blueprints = []
-    for bp in json_bp['blueprint_book']['blueprints']:
-        blueprints += recursive_json_parse(bp)
-    return blueprints
-
-def recursive_blueprint_book_parse(bp_book: Blueprintable) -> list[Blueprint]:
-    # Reached a leaf.
-    if isinstance(bp_book, Blueprint):
-        return [bp_book]
-
-    blueprints = []
-    for bp_node in bp_book.blueprints:
-        blueprints += recursive_blueprint_book_parse(bp_node)
-    return blueprints
+# TODO: Add the one-hot encoder.
 
 def center_in_N(matrix, N: int = 15) -> np.ndarray[np.ndarray]:
     """
@@ -178,85 +103,41 @@ def center_in_N(matrix, N: int = 15) -> np.ndarray[np.ndarray]:
         centered_matrix[start_h:start_h+h, start_w:start_w+w, :] = matrix
     
     return centered_matrix
-    # return np.transpose(centered_matrix, (2, 0, 1))
 
 
-def map_entity_to_key(entity) -> str:
-    key = None
-    # Determine which matrix to use based on entity type (using string comparison)
-    if entity.type == "assembling-machine":
-        key = "assembler"
-    elif entity.type == "inserter":
-        key = "inserter"
-    elif entity.type in ["transport-belt", "splitter", "underground-belt"]:
-        key = "belt"
-    elif entity.type in ["electric-pole"]:
-        key = "pole"
-    else:
-        pass
-    return key
-
-class RepresentationError(ValueError):
-    """Raised when there's an issue with creating or maintaining a Factory representation."""
-    pass
-
-
-@dataclass(frozen=False)
-class Factory:
-    json: dict
-    _bp: Optional[Blueprint]=None
-    # matrix: Optional[np.array]=None
-
-    @classmethod
-    def from_blueprint(cls, input: Blueprint):
-        j = input.to_dict()
-        if 'blueprint' not in j:
-            raise RepresentationError("Passed in something that wasn't a blueprint.")
-        return Factory(_bp=input, json=j)
-
-    @classmethod
-    def from_str(cls, input: str):
-        j = string_to_JSON(input)
-        # print(j['blueprint'].keys())
-        if 'blueprint' not in j:  # not a proper blueprint
-            if 'blueprint-book' in j:  # this is a BOOK
-                raise RepresentationError("Attempted to represent a blueprint book as a Factory.")
-            else:
-                logging.debug(j)
-                raise RepresentationError("Failed for an unknown issue.")
-        # if 'wires' in j['blueprint']:
-        #     del(j['blueprint']['wires'])
-        return Factory(json=j)        
-        
-    # note: you can just do list[cls] in Python 3.10+. a thing to consider in setting dependencies.
-    @classmethod
-    def from_blueprintable(cls, input: str) -> list["Factory"]:
-        # j = string_to_JSON(input)
-        j = get_blueprintable_from_string(input)  # Blueprintable
-        j_s = recursive_blueprint_book_parse(j)   # list[Blueprint]
-        return [cls.from_blueprint(j_) for j_ in j_s]  # Creates a list of Factories.
-
-    @property
-    def blueprint(self) -> Blueprint:
-        if self._bp is None:
-            self._bp = get_blueprintable_from_JSON(self.json)
-        return self._bp
+def find_bounding_box(matrix):
+    """
+    Find the bounding box of non-zero elements across all channels of an HWC matrix.
     
-    # @lru_cache
-    def get_matrix(self, dims: tuple[int, int],
-                repr_version: int = REPR_VERSION,
-                **kwargs):
-        if repr_version == 1:
-            mats = blueprint_to_opacity_matrices(self.blueprint, *dims, **kwargs)
-        elif repr_version == 2:
-            mats = json_to_6channel_matrix(self.json, *dims, **kwargs)
-        elif repr_version == 3:
-            mats = json_to_7channel_matrix(self.json, *dims, **kwargs)
-        elif repr_version == 4:
-            mats = json_to_8channel_matrix(self.json, *dims, **kwargs)
-        else:
-            raise RepresentationError(f"Unknown repr_version {repr_version}")
-        return mats
+    Args:
+        matrix: NumPy array with shape (height, width, channels)
+        
+    Returns:
+        tuple: (top, left, bottom, right) coordinates of bounding box
+    """
+    # Check if matrix is in HWC format
+    if len(matrix.shape) != 3:
+        raise ValueError("Input must be a 3D array in HWC format")
+    
+    # Combine all channels using logical OR to find any non-zero pixels
+    # This creates a 2D mask where a pixel is True if any channel has a non-zero value
+    mask = np.any(matrix != 0, axis=2)
+    
+    # Find non-zero rows and columns
+    non_zero_rows = np.where(np.any(mask, axis=1))[0]
+    non_zero_cols = np.where(np.any(mask, axis=0))[0]
+    
+    # If no non-zero elements are found
+    if len(non_zero_rows) == 0 or len(non_zero_cols) == 0:
+        return (0, 0, 0, 0)
+    
+    # Get the bounding box coordinates
+    top = non_zero_rows.min()
+    bottom = non_zero_rows.max()
+    left = non_zero_cols.min()
+    right = non_zero_cols.max()
+    
+    return (top, left, bottom, right)
 
 
 def trim_zero_edges(matrix,
@@ -312,29 +193,8 @@ def trim_zero_edges(matrix,
     
     return result
 
-def bound_bp_by_entities(bbook: Blueprint):
-    left = 100
-    top = 100
-    for m in bbook.entities:
-        left = min(left, m.tile_position._data[0])
-        top = min(top, m.tile_position._data[1])
-    return left, top
-
-def bound_bp_by_json(jsf: dict):
-    """Returns the top-left most point that defines the minimal
-    rectangle. In a compacted matrix, this returns (0,0).
-
-    Args:
-        jsf (dict): The JSON representation of a Factory.
-    """
-    left = 100
-    top = 100
-    for m in jsf['blueprint']['entities']:
-        a, b = get_entity_topleft(m)
-        left = min(left, a)
-        top = min(top, b)
-    return left, top
-
+# ----------- Representations. ------------
+# REPR_VERSION = 1
 def blueprint_to_opacity_matrices(bp: Blueprint, w=None, h=None,
                                   trim_topleft: bool=True):
     """
@@ -392,40 +252,7 @@ def blueprint_to_opacity_matrices(bp: Blueprint, w=None, h=None,
     return matrices
 
 
-# Define the index mapping.
-from draftsman.data import entities
-
-inserter_index = {k: ix+1 for ix, k in enumerate(entities.inserters)}
-belt_index = {
-    "transport-belt": 1,
-    "fast-transport-belt": 2,
-    "express-transport-belt": 3,
-    "turbo-transport-belt": 4,
-}
-underground_index = {
-    "underground-belt": 1,
-    "fast-underground-belt": 2,
-    "express-underground-belt": 3,
-    "turbo-underground-belt": 4,
-}
-splitter_index = {
-    "splitter": 1,
-    "fast-splitter": 2,
-    "express-splitter": 3,
-    "turbo-splitter": 4,
-}
-belt_index.update(underground_index)
-belt_index.update(splitter_index)
-pole_index = {
-    'small-electric-pole': 1,
-    'medium-electric-pole': 2,
-    'large-electric-pole': 3,
-    'substation': 4
-}
-# Ignores the center point. So for each dimension, we can move that many squares away.
-pole_radius = [2, 3, 1, 8]
-
-
+# REPR_VERSION = 2
 def json_to_6channel_matrix(js: dict, w=None, h=None,
                                   trim_topleft: bool=True,
                                   center=False):
@@ -511,7 +338,7 @@ def json_to_6channel_matrix(js: dict, w=None, h=None,
         matrices = center_in_N(matrix=matrices, N=N)
     return matrices
 
-
+# REPR_VERSION = 3
 def json_to_7channel_matrix(js: dict, w, h,
                             trim_topleft: bool=True,
                             center=False):
@@ -580,7 +407,7 @@ def json_to_7channel_matrix(js: dict, w, h,
         mats = center_in_N(matrix=mats, N=N)
     return mats
 
-
+# REPR_VERSION = 4
 def json_to_8channel_matrix(js: dict, w, h,
                             trim_topleft: bool=True,
                             center=False):

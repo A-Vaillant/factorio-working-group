@@ -1,6 +1,6 @@
-import numpy as np
 import matplotlib.pyplot as plt
-
+import numpy as np
+import torch
 
 channel_list = ['assembler', 'inserter', 'belt', 'pole', 'direction', 'power']
 
@@ -202,3 +202,62 @@ def print_matrix_channels(matrix, channel_names=None):
                 else:
                     print(f"{val:2d} ", end="")
             print()
+
+
+
+def visualize_channel_comparison(inputs, targets, outputs, num_samples=1, cmap='viridis'):
+    """
+    Visualize a comparison of 8-channel data for inputs, targets, and outputs.
+    
+    Args:
+        inputs: Input tensor of shape [batch_size, 8, height, width]
+        targets: Target tensor of shape [batch_size, 8, height, width]
+        outputs: Output tensor of shape [batch_size, 8, height, width]
+        num_samples: Number of samples to visualize
+        cmap: Colormap to use for visualization
+    """
+    # Ensure all tensors are on CPU and converted to numpy
+    if torch.is_tensor(inputs):
+        inputs = inputs.detach().cpu().numpy()
+    if torch.is_tensor(targets):
+        targets = targets.detach().cpu().numpy()
+    if torch.is_tensor(outputs):
+        outputs = outputs.detach().cpu().numpy()
+    
+    # Column labels
+    col_labels = ['Input', 'Ground Truth', 'Output']
+    
+    for sample_idx in range(min(num_samples, inputs.shape[0])):
+        # Create an 8x3 grid plot with appropriate dimensions
+        fig, axes = plt.subplots(8, 3, figsize=(12, 20))
+        plt.subplots_adjust(wspace=0.05, hspace=0.3)
+        
+        # Set title for the figure
+        fig.suptitle(f'Sample {sample_idx+1}: Channel Comparison', fontsize=16)
+        
+        # Add column labels at the top
+        for col_idx, label in enumerate(col_labels):
+            fig.text(0.2 + col_idx * 0.25, 0.96, label, ha='center', fontsize=14)
+        
+        # For each channel
+        for channel in range(8):
+            # Input channel
+            im1 = axes[channel, 0].imshow(inputs[sample_idx, channel], cmap=cmap)
+            axes[channel, 0].set_title(f'Channel {channel+1}', fontsize=10)
+            axes[channel, 0].axis('off')
+            
+            # Ground truth channel
+            im2 = axes[channel, 1].imshow(targets[sample_idx, channel], cmap=cmap)
+            axes[channel, 1].axis('off')
+            
+            # Output channel
+            im3 = axes[channel, 2].imshow(outputs[sample_idx, channel], cmap=cmap)
+            axes[channel, 2].axis('off')
+        
+        # Add colorbar with better positioning
+        # cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])
+        # cbar = fig.colorbar(im1, cax=cbar_ax)
+        # cbar.set_label('Intensity', rotation=270, labelpad=15)
+        
+        plt.tight_layout()
+        plt.show()

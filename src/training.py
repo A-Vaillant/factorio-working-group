@@ -7,15 +7,15 @@ from torch.utils.tensorboard import SummaryWriter
 import os
 from datetime import datetime
 import logging
-from src.pipeline.loaders import FactoryLoader, MatrixDataset, collate_numpy_matrices
+from src.pipeline.loaders import collate_numpy_matrices
 from src.processor import EntityPuncher
 from src.model import DeepQCNN
 from src.pipeline.datasets import load_dataset
-from src.pipeline.filters import (Required,
-                                  RecipeWhitelist,
-                                  SizeRestrictor,
-                                  Blacklist,
-                                  Whitelist)
+# from src.pipeline.filters import (Required,
+#                                   RecipeWhitelist,
+#                                   SizeRestrictor,
+#                                   Blacklist,
+#                                   Whitelist)
 
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ class QCNNTrainer:
         self.model = model.to(device).float()
         self.device = device
         self.optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-        self.base_criterion = nn.L1Loss()
+        self.base_criterion = nn.MSELoss()
         
         # Set up TensorBoard logging
         current_time = datetime.now().strftime('%b%d_%H-%M-%S')
