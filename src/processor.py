@@ -207,6 +207,10 @@ class EntityPuncher():
         Returns lists of (before_factory, after_factory, repair_action_idx).
         """
         pairs = []
+        # Add identity transforms.
+        factory = Factory.from_blueprint(deepcopy(self.blueprint))
+        for i in range(4):
+            pairs.append((factory, factory, i))
 
         self._save_an_assembler()
         entity_iterator =  self._next_removal_order(self.blueprint.entities)

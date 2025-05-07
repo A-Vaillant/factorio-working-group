@@ -499,3 +499,112 @@ def _make_recipe_index(entities) -> dict[str, int]:
         index[r] = next_id
         next_id += 1
     return index
+
+
+def json_to_manychannel_matrix(js: dict, w, h,
+                            trim_topleft: bool=True,
+                            center=False):
+    entities = js['blueprint']['entities']
+
+    if trim_topleft:
+        left, top = bound_bp_by_json(js)
+        for entity in entities:
+            entity['position']['x'] -= left
+            entity['position']['y'] -= top
+
+    assemblers = [e for e in entities if e['name'].startsiwth('assembling-machine')]
+    belts = [e for e in entities if e['name'] in belt_index]
+    inserters = [e for e in entities if e['name'] in inserter_index]
+    poles = [e for e in entities if e['name'] in pole_index]
+
+    assembler_matrices = make_assembler_matrix(assemblers, w, h)
+    belt_matrices = make_belt_matrix(belts, w, h)
+    inserter_matrices = make_inserter_matrix(inserters, w, h)
+    pole_matrices = make_pole_matrix(poles, w, h)
+    
+    for entity in entities:
+        name, width, height = entity['name'], 1, 1  # Default values.
+        is_directional = False
+        idx = get_item_id_from_name(name)
+        if name.startswith("assembling-machine"):
+            key = channels.index("assembler")
+            width, height = 3, 3
+        elif name in inserter_index:
+            key = channels.index("inserter")
+            is_directional = True
+        elif name in belt_index:
+            is_directional = True
+            key = channels.index("belt")
+            if 'splitter' in name:
+                if entity.get('direction', 0) in [0, 4]:
+                    width, height = 2, 1
+                else:
+                    width, height = 1, 2
+        elif name in pole_index:
+            if name == 'substation':
+                width, height = 2, 2
+            key = channels.index("pole")
+        elif name == 'ee-infinity-loader':  # Source or sink.
+            is_directional = True
+            key = channels.index("belt")
+            if entity.get('filter') is None:  # Sink.
+                X = -1
+            idx = get_item_id_from_name('underground-belt')  # Treated as underground belts.
+        else:
+            logging.info(f"Skipping {entity['name']}.")
+            entity = None
+            continue
+
+        # Placement logic
+        logging.info(f"Placing {entity['name']}.")
+        # Determining the item's bounds.
+        lx, ty = get_entity_topleft(entity)
+        rx, by = lx + width, ty + height
+        # Placing the building on the matrix.
+        mats[lx:rx, ty:by, key] = X
+        mats[lx:rx, ty:by, channels.index('item')] = idx
+        
+        logging.info(f"Taking up: {ty}, {lx} to {by}, {rx}.")
+        if is_directional:
+            mats[lx:rx, ty:by, channels.index("direction")] = entity.get('direction', 0) + 1
+
+        # recipe
+        if key == 0 and "recipe" in entity:
+            mats[lx:rx, ty:by, channels.index("recipe")] = recipe_id[entity["recipe"]]
+
+    # NOTE: center_in_N doesn't seem to work.
+    if center:
+        N = max(w, h)
+        mats = center_in_N(matrix=mats, N=N)
+    return mats
+
+def place_entity_
+
+# So, we'll actually go back to our roots here: A dictionary that maps the channel names
+# to the matrices.
+# And then we'll use that to merge stuff together.
+# Note! These "channel names" actually correspond to MULTIPLE channels if they're one-hots.
+def make_assembler_matrix(assemblers, w, h):
+    """ Takes a blueprint JSON and makes the assembler matrix associated with it."""
+    channels = ['assembler', 'recipe', 'item']
+    recipe_id = _make_recipe_index(assemblers)
+
+    for e in assemblers:
+        name = e['name']
+        idx = get_item_id_from_name(name)
+    # Build the assembler opacity.
+    # Build the recipe channels. Let's say that you can have up to 4 recipes, so 4 channels there.
+    # 3 item chanels for tiers 1-3. 
+
+def make_belt_matrix(belts, w, h):
+    channels = ['belt', 'direction', 'item', 'sourcesink']
+    # 1 for opacity, 4 channels for direction, 3 for item
+    ...
+
+def make_inserter_matrix(inserters, w, h):
+    channels = ['inserter', 'direction', 'item']
+    ...
+
+def make_pole_matrix(poles, w, h):
+    channels = ['pole', 'item']
+    ...

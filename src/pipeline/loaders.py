@@ -147,7 +147,8 @@ class MatrixDataset(IterableDataset):
 
 
 def collate_numpy_matrices_without_conditions(batch):
-    levels, conditions, actions = zip(*batch)
+    # Removes the conditions.
+    levels, actions, conditions = zip(*batch)
     
     # Stack levels (convert to tensor and change to CHW format)
     levels_np = np.stack(levels)  # Shape: (batch_size, 20, 20, C)
