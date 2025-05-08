@@ -41,13 +41,12 @@ pole_index = {
     'small-electric-pole': 1,
     'medium-electric-pole': 2,
     'large-electric-pole': 3,
-    'substation': 4
+    # 'substation': 4
 }
 # Ignores the center point. So for each dimension, we can move that many squares away.
 pole_radius = [2, 3, 1, 8]
 
-# TODO: Add the one-hot encoder.
-
+# ----------- Utilities. ------------------
 def center_in_N(matrix, N: int = 15) -> np.ndarray[np.ndarray]:
     """
     Center a matrix of any size within an NxN matrix (numpy array) and converts
@@ -250,7 +249,6 @@ def blueprint_to_opacity_matrices(bp: Blueprint, w=None, h=None,
         matrices[left:right, top:bottom, key] = 1
     
     return matrices
-
 
 # REPR_VERSION = 2
 def json_to_6channel_matrix(js: dict, w=None, h=None,
@@ -622,7 +620,29 @@ def make_assembler_matrix(assemblers, w, h):
 def make_belt_matrix(belts, w, h):
     channels = ['belt', 'direction', 'item', 'sourcesink']
     # 1 for opacity, 4 channels for direction, 3 for item
-    ...
+    opacity_matrix = np.zeros((w, h, 1), dtype=int)
+    direction_matrix = np.zeros((w, h, 4), dtype=int)
+    item_id_matrix = np.zeros((w, h, 3), dtype=int)  # Allows for up to 3 kinds of belts.
+    sourcesink_matrix = np.zeroes((w, h, 2), dtype=int)
+    for entity in belts:
+        name = entity['name']
+        idx = belt_index[name]
+
+        # Determining the item's bounds.
+        lx, ty = get_entity_topleft(entity)
+        rx, by = lx+3, ty+3
+        opacity_matrix[lx:rx, ty:by, 0] = 1
+        item_id_matrix[lx:rx, ty:by, idx] = 1
+        direction_matrix[lx:rx, ty:by, entity.get('direction', 0)] = 1
+
+
+    map_matrix = {
+        'assembler': opacity_matrix,
+        'item': item_id_matrix,
+        'direction': recipe_matrix
+    }
+    
+    return map_matrix
 
 def make_inserter_matrix(inserters, w, h):
     channels = ['inserter', 'direction', 'item']
