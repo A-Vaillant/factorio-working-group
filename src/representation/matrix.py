@@ -21,19 +21,19 @@ belt_index = {
     "transport-belt": 1,
     "fast-transport-belt": 2,
     "express-transport-belt": 3,
-    "turbo-transport-belt": 4,
+    # "turbo-transport-belt": 4,
 }
 underground_index = {
     "underground-belt": 1,
     "fast-underground-belt": 2,
     "express-underground-belt": 3,
-    "turbo-underground-belt": 4,
+    # "turbo-underground-belt": 4,
 }
 splitter_index = {
     "splitter": 1,
     "fast-splitter": 2,
     "express-splitter": 3,
-    "turbo-splitter": 4,
+    # "turbo-splitter": 4,
 }
 belt_index.update(underground_index)
 belt_index.update(splitter_index)
@@ -512,7 +512,7 @@ def json_to_manychannel_matrix(js: dict, w, h,
             entity['position']['x'] -= left
             entity['position']['y'] -= top
 
-    assemblers = [e for e in entities if e['name'].startsiwth('assembling-machine')]
+    assemblers = [e for e in entities if e['name'].startswith('assembling-machine')]
     belts = [e for e in entities if e['name'] in belt_index]
     inserters = [e for e in entities if e['name'] in inserter_index]
     poles = [e for e in entities if e['name'] in pole_index]
@@ -522,6 +522,7 @@ def json_to_manychannel_matrix(js: dict, w, h,
     inserter_matrices = make_inserter_matrix(inserters, w, h)
     pole_matrices = make_pole_matrix(poles, w, h)
     
+
     for entity in entities:
         name, width, height = entity['name'], 1, 1  # Default values.
         is_directional = False
@@ -578,7 +579,10 @@ def json_to_manychannel_matrix(js: dict, w, h,
         mats = center_in_N(matrix=mats, N=N)
     return mats
 
-def place_entity_
+def inplace_entity_at(mat, x, y, w, h,
+                    channel=0, X=1):
+    mat[x: x+w, y: y+h, channel] = X
+    return mat
 
 # So, we'll actually go back to our roots here: A dictionary that maps the channel names
 # to the matrices.
@@ -589,12 +593,31 @@ def make_assembler_matrix(assemblers, w, h):
     channels = ['assembler', 'recipe', 'item']
     recipe_id = _make_recipe_index(assemblers)
 
-    for e in assemblers:
-        name = e['name']
-        idx = get_item_id_from_name(name)
-    # Build the assembler opacity.
-    # Build the recipe channels. Let's say that you can have up to 4 recipes, so 4 channels there.
-    # 3 item chanels for tiers 1-3. 
+    opacity_matrix = np.zeros((w, h, 1), dtype=int)
+    recipe_matrix = np.zeros((w, h, 5), dtype=int)  # Allows for 5 recipes at once.
+    item_id_matrix = np.zeros((w, h, 3), dtype=int)  # Allows for up to 3 kinds of assemblers.
+    for entity in assemblers:
+        name = entity['name']
+        idx = int(name[-1])-1  # Maps 1,2,3 to 0,1,2 for channels.
+
+        # Determining the item's bounds.
+        lx, ty = get_entity_topleft(entity)
+        rx, by = lx+3, ty+3
+        opacity_matrix[lx:rx, ty:by, 0] = 1
+        item_id_matrix[lx:rx, ty:by, idx] = 1
+        if 'recipe' in entity:
+            rid = recipe_id[entity["recipe"]] - 1  # Maps 1,2,3,4,5 to 0,1,2,3,4.
+            if rid > 4:
+                logging.error("Too many recipes!!!")
+            recipe_matrix[lx:rx, ty:by, rid] = 1
+
+    map_matrix = {
+        'assembler': opacity_matrix,
+        'item': item_id_matrix,
+        'recipe': recipe_matrix
+    }
+    
+    return map_matrix
 
 def make_belt_matrix(belts, w, h):
     channels = ['belt', 'direction', 'item', 'sourcesink']
