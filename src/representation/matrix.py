@@ -77,9 +77,9 @@ def center_in_N(matrix, N: int = 15) -> np.ndarray[np.ndarray]:
     
     # Create empty NxN matrix
     if c == 1:
-        centered_matrix = np.zeros((N, N))
+        centered_matrix = np.zeros((N, N), dtype=int)
     else:
-        centered_matrix = np.zeros((N, N, c))
+        centered_matrix = np.zeros((N, N, c), dtype=int)
 
     t, l, b, r = find_bounding_box(matrix)
     if b - t > N:  # too tall!
