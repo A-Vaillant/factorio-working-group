@@ -10,18 +10,14 @@ from typing import Optional
 from draftsman.blueprintable import Blueprint, get_blueprintable_from_JSON, get_blueprintable_from_string
 from draftsman.utils import string_to_JSON
 
-from .utils import recursive_blueprint_book_parse
+from .utils import recursive_blueprint_book_parse, RepresentationError
 from .matrix import (blueprint_to_opacity_matrices,
                      json_to_6channel_matrix,
                      json_to_7channel_matrix,
-                     json_to_8channel_matrix)
+                     json_to_8channel_matrix,
+                     json_to_manychannel_matrix)
 # You surely will not regret putting a global variable in your representation module.
-REPR_VERSION = 4
-
-
-class RepresentationError(ValueError):
-    """Raised when there's an issue with creating or maintaining a Factory representation."""
-    pass
+REPR_VERSION = 5
 
 
 @dataclass(frozen=False)
@@ -77,6 +73,8 @@ class Factory:
             mats = json_to_7channel_matrix(self.json, *dims, **kwargs)
         elif repr_version == 4:
             mats = json_to_8channel_matrix(self.json, *dims, **kwargs)
+        elif repr_version == 5:
+            mats = json_to_manychannel_matrix(self.json, *dims, **kwargs)
         else:
             raise RepresentationError(f"Unknown repr_version {repr_version}")
         return mats
