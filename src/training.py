@@ -243,7 +243,7 @@ def prepare_dataset(dims=(20,20), repr_version=4,
             Xs.append(x_m)
             Ys.append(y_m)
             cs.append(c_)
-    return (Xs, cs, Ys)
+    return (Ys, cs, Xs)  # Switch before and after factories HERE.
 
 
 def split_dataloader(dataloader, val_split=0.2, random_seed=42):
