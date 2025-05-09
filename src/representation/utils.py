@@ -23,6 +23,9 @@ from draftsman.data import recipes as recipe_data
 from draftsman.data import items
 
 
+class RepresentationError(ValueError):
+    """Raised when there's an issue with creating or maintaining a Factory representation."""
+    pass
 
 def recursive_json_parse(json_bp: dict) -> list[dict]:
     if 'blueprint' in json_bp:

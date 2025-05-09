@@ -9,31 +9,39 @@ from draftsman.blueprintable import Blueprint
 from .utils import (bound_bp_by_entities,
                     bound_bp_by_json,
                     get_entity_topleft,
-                    get_item_id_from_name)
+                    get_item_id_from_name,
+                    RepresentationError)
 
 
 # You surely will not regret putting a global variable in your representation module.
-REPR_VERSION = 4
+REPR_VERSION = 5
 
 
-inserter_index = {k: ix+1 for ix, k in enumerate(entities.inserters)}
+# inserter_index = {k: ix+1 for ix, k in enumerate(entities.inserters)}
+inserter_index = {
+    "inserter": 1,
+    "fast-inserter": 2,
+    "long-handed-inserter": 3
+}
+
 belt_index = {
     "transport-belt": 1,
     "fast-transport-belt": 2,
     "express-transport-belt": 3,
-    "turbo-transport-belt": 4,
+    # "turbo-transport-belt": 4,
 }
 underground_index = {
     "underground-belt": 1,
     "fast-underground-belt": 2,
     "express-underground-belt": 3,
-    "turbo-underground-belt": 4,
+    "ee-infinity-loader": 1,
+    # "turbo-underground-belt": 4,
 }
 splitter_index = {
     "splitter": 1,
     "fast-splitter": 2,
     "express-splitter": 3,
-    "turbo-splitter": 4,
+    # "turbo-splitter": 4,
 }
 belt_index.update(underground_index)
 belt_index.update(splitter_index)
@@ -41,13 +49,12 @@ pole_index = {
     'small-electric-pole': 1,
     'medium-electric-pole': 2,
     'large-electric-pole': 3,
-    'substation': 4
+    # 'substation': 4
 }
 # Ignores the center point. So for each dimension, we can move that many squares away.
 pole_radius = [2, 3, 1, 8]
 
-# TODO: Add the one-hot encoder.
-
+# ----------- Utilities. ------------------
 def center_in_N(matrix, N: int = 15) -> np.ndarray[np.ndarray]:
     """
     Center a matrix of any size within an NxN matrix (numpy array) and converts
@@ -250,7 +257,6 @@ def blueprint_to_opacity_matrices(bp: Blueprint, w=None, h=None,
         matrices[left:right, top:bottom, key] = 1
     
     return matrices
-
 
 # REPR_VERSION = 2
 def json_to_6channel_matrix(js: dict, w=None, h=None,
@@ -504,6 +510,8 @@ def _make_recipe_index(entities) -> dict[str, int]:
 def json_to_manychannel_matrix(js: dict, w, h,
                             trim_topleft: bool=True,
                             center=False):
+    opacity_channels = ['assembler', 'belt', 'inserter', 'pole']
+    other_channels = ['direction', 'recipe', 'item', 'kind', 'sourcesink']
     entities = js['blueprint']['entities']
 
     if trim_topleft:
@@ -512,7 +520,7 @@ def json_to_manychannel_matrix(js: dict, w, h,
             entity['position']['x'] -= left
             entity['position']['y'] -= top
 
-    assemblers = [e for e in entities if e['name'].startsiwth('assembling-machine')]
+    assemblers = [e for e in entities if e['name'].startswith('assembling-machine')]
     belts = [e for e in entities if e['name'] in belt_index]
     inserters = [e for e in entities if e['name'] in inserter_index]
     poles = [e for e in entities if e['name'] in pole_index]
@@ -521,64 +529,42 @@ def json_to_manychannel_matrix(js: dict, w, h,
     belt_matrices = make_belt_matrix(belts, w, h)
     inserter_matrices = make_inserter_matrix(inserters, w, h)
     pole_matrices = make_pole_matrix(poles, w, h)
-    
-    for entity in entities:
-        name, width, height = entity['name'], 1, 1  # Default values.
-        is_directional = False
-        idx = get_item_id_from_name(name)
-        if name.startswith("assembling-machine"):
-            key = channels.index("assembler")
-            width, height = 3, 3
-        elif name in inserter_index:
-            key = channels.index("inserter")
-            is_directional = True
-        elif name in belt_index:
-            is_directional = True
-            key = channels.index("belt")
-            if 'splitter' in name:
-                if entity.get('direction', 0) in [0, 4]:
-                    width, height = 2, 1
-                else:
-                    width, height = 1, 2
-        elif name in pole_index:
-            if name == 'substation':
-                width, height = 2, 2
-            key = channels.index("pole")
-        elif name == 'ee-infinity-loader':  # Source or sink.
-            is_directional = True
-            key = channels.index("belt")
-            if entity.get('filter') is None:  # Sink.
-                X = -1
-            idx = get_item_id_from_name('underground-belt')  # Treated as underground belts.
-        else:
-            logging.info(f"Skipping {entity['name']}.")
-            entity = None
-            continue
+    submatrix_dict_list = [assembler_matrices, belt_matrices, inserter_matrices, pole_matrices]
 
-        # Placement logic
-        logging.info(f"Placing {entity['name']}.")
-        # Determining the item's bounds.
-        lx, ty = get_entity_topleft(entity)
-        rx, by = lx + width, ty + height
-        # Placing the building on the matrix.
-        mats[lx:rx, ty:by, key] = X
-        mats[lx:rx, ty:by, channels.index('item')] = idx
+    opacity_matrix_list = []
+    for k, m in zip(opacity_channels, submatrix_dict_list):
+        opacity_matrix_list.append(m[k])  # Adds the opacity channels in order.
+
+    channel_matrices = {}
+    for channel in other_channels:
+        # First, find the maximum number of subchannel dimensions for this channel type
+        max_channels = max(
+            (m[channel].shape[2] for m in submatrix_dict_list if channel in m),
+            default=0
+        )
         
-        logging.info(f"Taking up: {ty}, {lx} to {by}, {rx}.")
-        if is_directional:
-            mats[lx:rx, ty:by, channels.index("direction")] = entity.get('direction', 0) + 1
+        if max_channels > 0:
+            # Initialize the combined matrix with proper channel depth
+            combined = np.zeros((w, h, max_channels), dtype=int)
+            
+            # Sum up corresponding channels from each submatrix
+            for submatrix in submatrix_dict_list:
+                if channel in submatrix:
+                    # Get the current submatrix for this channel
+                    curr_matrix = submatrix[channel]
+                    # Add it to the combined matrix, but only up to the number of channels in curr_matrix
+                    combined[:, :, :curr_matrix.shape[2]] += curr_matrix
+            
+            channel_matrices[channel] = combined
 
-        # recipe
-        if key == 0 and "recipe" in entity:
-            mats[lx:rx, ty:by, channels.index("recipe")] = recipe_id[entity["recipe"]]
+    mats = np.concatenate(opacity_matrix_list + list(channel_matrices.values()), axis=2)
 
-    # NOTE: center_in_N doesn't seem to work.
     if center:
         N = max(w, h)
         mats = center_in_N(matrix=mats, N=N)
+
     return mats
 
-def place_entity_
 
 # So, we'll actually go back to our roots here: A dictionary that maps the channel names
 # to the matrices.
@@ -589,22 +575,127 @@ def make_assembler_matrix(assemblers, w, h):
     channels = ['assembler', 'recipe', 'item']
     recipe_id = _make_recipe_index(assemblers)
 
-    for e in assemblers:
-        name = e['name']
-        idx = get_item_id_from_name(name)
-    # Build the assembler opacity.
-    # Build the recipe channels. Let's say that you can have up to 4 recipes, so 4 channels there.
-    # 3 item chanels for tiers 1-3. 
+    opacity_matrix = np.zeros((w, h, 1), dtype=int)
+    recipe_matrix = np.zeros((w, h, 5), dtype=int)  # Allows for 5 recipes at once.
+    item_id_matrix = np.zeros((w, h, 3), dtype=int)  # Allows for up to 3 tiers of assemblers.
+    for entity in assemblers:
+        name = entity['name']
+        idx = int(name[-1])-1  # Maps 1,2,3 to 0,1,2 for channels.
+
+        # Determining the item's bounds.
+        lx, ty = get_entity_topleft(entity)
+        rx, by = lx+3, ty+3
+        opacity_matrix[lx:rx, ty:by, 0] = 1
+        item_id_matrix[lx:rx, ty:by, idx] = 1
+        if 'recipe' in entity:
+            rid = recipe_id[entity["recipe"]] - 1  # Maps 1,2,3,4,5 to 0,1,2,3,4.
+            if rid > 4:
+                logging.error("Too many recipes!!!")
+            recipe_matrix[lx:rx, ty:by, rid] = 1
+
+    map_matrix = {
+        'assembler': opacity_matrix,
+        'item': item_id_matrix,
+        'recipe': recipe_matrix
+    }
+    
+    return map_matrix
 
 def make_belt_matrix(belts, w, h):
-    channels = ['belt', 'direction', 'item', 'sourcesink']
-    # 1 for opacity, 4 channels for direction, 3 for item
-    ...
+    channels = ['belt', 'direction', 'item', 'kind', 'sourcesink']
+    # 1 for opacity, 4 channels for direction, 3 for item, 2 for sourcesink
+    opacity_matrix = np.zeros((w, h, 1), dtype=int)
+    direction_matrix = np.zeros((w, h, 4), dtype=int)
+    item_id_matrix = np.zeros((w, h, 3), dtype=int)  # Allows for up to 3 tiers of belts.
+    kind_matrix = np.zeros((w, h, 3), dtype=int)  # Allows for 3 kinds of belts.
+    sourcesink_matrix = np.zeros((w, h, 2), dtype=int)
+    for entity in belts:
+        name = entity['name']
+        idx = belt_index[name] - 1
+        direction = entity.get('direction', 0)//2
+        # Set the kind.
+        if name in underground_index:
+            kind_idx = 1
+        elif name in splitter_index:
+            kind_idx = 2
+        else:
+            kind_idx = 0
+
+        # Determining the item's bounds.
+        lx, ty = get_entity_topleft(entity)
+        if kind_idx < 2:  # Not a splitter.
+            dx, dy = 1, 1
+        elif direction in [0, 2]:
+            # Wide.
+            dx, dy = 2, 1
+        elif direction in [1, 3]:
+            dx, dy = 1, 2
+        else:
+            raise RepresentationError(f"Direction had value of {direction}.")
+
+        rx, by = lx+dx, ty+dy
+        opacity_matrix[lx:rx, ty:by, 0] = 1
+        item_id_matrix[lx:rx, ty:by, idx] = 1
+        kind_matrix[lx:rx, ty:by, kind_idx] = 1
+        direction_matrix[lx:rx, ty:by, direction] = 1
+        if name == 'ee-infinity-loader':
+            # INITIALIZE CHAOS METRICS
+            # If there's no filter, it's a sink.
+            srcsink = 1 if entity.get('filter') is None else 0
+            sourcesink_matrix[lx:rx, ty:by, srcsink] = 1
+
+    map_matrix = {
+        'belt': opacity_matrix,
+        'item': item_id_matrix,
+        'direction': direction_matrix,
+        'kind': kind_matrix,
+        'sourcesink': sourcesink_matrix
+    }
+    
+    return map_matrix
+
 
 def make_inserter_matrix(inserters, w, h):
     channels = ['inserter', 'direction', 'item']
-    ...
+    opacity_matrix = np.zeros((w, h, 1), dtype=int)
+    direction_matrix = np.zeros((w, h, 4), dtype=int)
+    item_id_matrix = np.zeros((w, h, 3), dtype=int)  # Allows for up to 3 kinds of belts.
+    for entity in inserters:
+        name = entity['name']
+        idx = inserter_index[name] - 1
+
+        # Determining the item's bounds.
+        lx, ty = get_entity_topleft(entity)
+        rx, by = lx+1, ty+1
+        opacity_matrix[lx:rx, ty:by, 0] = 1
+        item_id_matrix[lx:rx, ty:by, idx] = 1
+        direction_matrix[lx:rx, ty:by, entity.get('direction', 0)//2] = 1
+
+    map_matrix = {
+        'inserter': opacity_matrix,
+        'item': item_id_matrix,
+        'direction': direction_matrix,
+    }
+    
+    return map_matrix
+
 
 def make_pole_matrix(poles, w, h):
     channels = ['pole', 'item']
-    ...
+    opacity_matrix = np.zeros((w, h, 1), dtype=int)
+    item_id_matrix = np.zeros((w, h, 3), dtype=int)
+    
+    for entity in poles:
+        name = entity['name']
+        idx = pole_index[name] - 1
+        lx, ty = get_entity_topleft(entity)
+        pd = 1 if idx < 2 else 2  # Large poles and substations are 2x2.
+        rx, by = lx+pd, ty+pd
+        
+        opacity_matrix[lx:rx, ty:by, 0] = 1
+        item_id_matrix[lx:rx, ty:by, idx] = 1
+    
+    return {
+        'pole': opacity_matrix,
+        'item': item_id_matrix
+    }
