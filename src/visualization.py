@@ -304,15 +304,15 @@ def visualize_manychannel_matrices(input_matrix, ground_truth, output_matrix, sa
     fig, axes = plt.subplots(21, 3, figsize=(10, n_channels * 7))
     plt.subplots_adjust(hspace=0.1, wspace=0.1)
 
-    titles = ['Input', 'Ground Truth', 'Changes']
+    titles = ['Input', 'Ground Truth', 'Prediction']
     
     # Set column titles
     for col, title in enumerate(titles):
         axes[0, col].set_title(title)
     
     forest_green = (0.133, 0.545, 0.133)
-    bright_red = (1, 0.4, 0.4)  # False positives
-    dark_red = (0.545, 0, 0)  # False negatives
+    bright_red = (1, 0, 0)         # Pure bright red for false positives
+    dark_red = (0.5, 0, 0.5)       # Purple for false negatives
 
     current_row = 0
     for row in range(21):
