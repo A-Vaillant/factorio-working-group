@@ -294,30 +294,3 @@ def split_dataloader(dataloader, val_split=0.2, random_seed=42):
     )
     
     return train_loader, val_loader
-
-
-if __name__ == "__main__":
-    datalist = prepare_dataset()
-    rotational_datalist = AugmentedListDataset(datalist)
-    dataloader = DataLoader(
-        rotational_datalist,
-        batch_size=32, 
-        collate_fn=collate_numpy_matrices
-    )
-    train_dataloader, val_dataloader = split_dataloader(dataloader)
-    model = DeepQCNN(input_channels=8, output_channels=8)
-
-    trainer = QCNNTrainer(
-            model=model,
-            device='mps',
-            learning_rate=0.001,
-            log_dir='runs/qcnn',
-        )
-    
-    # Train model
-    trainer.train(
-        train_dataloader=train_dataloader,
-        val_dataloader=val_dataloader,
-        num_epochs=100,
-        save_path='models/qcnn_best.pth'
-    )

@@ -1,8 +1,10 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import datetime
+from datetime import datetime
 from torch.utils.tensorboard import SummaryWriter
+
+from src.visualization import visualize_changes_for_tensorboard
 
 
 class BinaryMatrixTransformCNN(nn.Module):
@@ -50,7 +52,7 @@ def matrix_integrity_loss(output, target):
     return torch.tensor(0.0, device=output.device, requires_grad=True)
 
 def train_model(model, train_loader, val_loader, num_epochs=100, device='cuda',
-                integrity_weight=0.1, log_dir=None):
+                integrity_weight=0.1, log_dir=None, viz_interval=5):
     if log_dir is None:
         log_dir = f'runs/binary_matrix_transform_{datetime.now().strftime("%Y%m%d-%H%M%S")}'
     writer = SummaryWriter(log_dir)
@@ -93,12 +95,18 @@ def train_model(model, train_loader, val_loader, num_epochs=100, device='cuda',
         val_integrity_loss = 0
         correct = 0
         total = 0
+
+        viz_data = None
         
         with torch.no_grad():
-            for data, target, _ in val_loader:
+            for i, (data, target, _) in enumerate(val_loader):
                 data, target = data.to(device), target.to(device)
                 output = model(data)
                 
+                # Store first batch for visualization
+                if i == 0 and epoch % viz_interval == 0:
+                    viz_data = (data[0], target[0], output[0])
+
                 bce_loss = criterion(output, target.float())
                 integrity_loss = matrix_integrity_loss(output, target)
                 loss = bce_loss + integrity_weight * integrity_loss
@@ -129,6 +137,12 @@ def train_model(model, train_loader, val_loader, num_epochs=100, device='cuda',
         writer.add_scalar('Loss/val_integrity', val_integrity_loss, epoch)
         writer.add_scalar('Accuracy/val', accuracy, epoch)
         writer.add_scalar('LR', optimizer.param_groups[0]['lr'], epoch)
+
+        # Add matrix visualization every viz_interval epochs
+        if epoch % viz_interval == 0 and viz_data is not None:
+            input_matrix, target_matrix, output_matrix = viz_data
+            visualize_changes_for_tensorboard(writer, epoch, 
+                                           input_matrix, target_matrix, output_matrix)
         
         print(f'Epoch: {epoch+1}')
         print(f'Training Loss: {train_loss:.4f} (BCE: {train_bce_loss:.4f}, Integrity: {train_integrity_loss:.4f})')

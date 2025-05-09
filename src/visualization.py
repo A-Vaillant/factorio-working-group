@@ -3,6 +3,17 @@ import numpy as np
 import torch
 
 channel_list = ['assembler', 'inserter', 'belt', 'pole', 'direction', 'power']
+channel_names = [
+    'assemblers', 'belts', 'inserters', 'poles'
+]
+
+dirs = ['left', 'top', 'right', 'bottom']
+channel_names += [f'dir: {d}' for d in dirs]
+channel_names += [f'recipe #{i+1}' for i in range(5)]
+channel_names += [f'item tier #{i+1}' for i in range(3)]
+channel_names += ['standard belts', 'underground belts', 'splitters']
+channel_names += ['sources', 'sinks']
+
 
 def visualize_6D_matrix(matrix, hwc=None):
     """
@@ -170,6 +181,7 @@ def visualize_7D_matrix(matrix, channel_list=None, hwc=None):
    
     return fig
 
+
 def print_matrix_channels(matrix, channel_names=None):
     """
     Print each channel of a multi-channel matrix in a readable format.
@@ -276,24 +288,142 @@ def visualize_manychannel_matrices(input_matrix, ground_truth, output_matrix, sa
     input_np = input_matrix.permute(1, 2, 0).cpu().detach().numpy()
     ground_truth_np = ground_truth.permute(1, 2, 0).cpu().detach().numpy()
     output_np = (torch.sigmoid(output_matrix) > 0.5).permute(1, 2, 0).cpu().detach().numpy()
+
+    # Calculate max number of non-empty channels
+    n_channels = 0
+    for row in range(21):
+        if (input_np[:,:,row].any() or 
+            ground_truth_np[:,:,row].any() or 
+            output_np[:,:,row].any()):
+            n_channels += 1
     
-    fig, axes = plt.subplots(21, 3, figsize=(15, 70))
-    plt.subplots_adjust(hspace=0.3)
+    if n_channels == 0:
+        print("All channels are empty!")
+        return
     
-    titles = ['Input', 'Ground Truth', 'Output']
-    for col, (title, data) in enumerate(zip(titles, 
-                                          [input_np, ground_truth_np, output_np])):
+    fig, axes = plt.subplots(21, 3, figsize=(10, n_channels * 7))
+    plt.subplots_adjust(hspace=0.1, wspace=0.1)
+
+    titles = ['Input', 'Ground Truth', 'Changes']
+    
+    # Set column titles
+    for col, title in enumerate(titles):
         axes[0, col].set_title(title)
-        for row in range(21):
-            ax = axes[row, col]
-            im = ax.imshow(data[:,:,row], cmap='binary', interpolation='nearest')
-            ax.set_xticks([])
-            ax.set_yticks([])
+    
+    forest_green = (0.133, 0.545, 0.133)
+    bright_red = (1, 0.4, 0.4)  # False positives
+    dark_red = (0.545, 0, 0)  # False negatives
+
+    current_row = 0
+    for row in range(21):
+        # Skip if channel is empty
+        if not (input_np[:,:,row].any() or 
+                ground_truth_np[:,:,row].any() or 
+                output_np[:,:,row].any()):
+            continue
+            
+        # Show input and ground truth
+        axes[current_row, 0].imshow(input_np[:,:,row], cmap='binary', interpolation='nearest')
+        axes[current_row, 1].imshow(ground_truth_np[:,:,row], cmap='binary', interpolation='nearest')
+        
+        # Create white background
+        change_viz = np.ones((*input_np.shape[:2], 3))
+        
+        # Set unchanged 1s to black
+        unchanged = (input_np[:,:,row] == output_np[:,:,row])
+        unchanged_ones = unchanged & (input_np[:,:,row] == 1)
+        change_viz[unchanged_ones] = [0, 0, 0]
+        
+        # Separate false positives and false negatives
+        false_positives = (output_np[:,:,row] == 1) & (ground_truth_np[:,:,row] == 0)
+        false_negatives = (output_np[:,:,row] == 0) & (ground_truth_np[:,:,row] == 1)
+        
+        # Color the changes
+        correct_changes = (input_np[:,:,row] != output_np[:,:,row]) & (output_np[:,:,row] == ground_truth_np[:,:,row])
+        
+        # Green = correct changes
+        change_viz[correct_changes] = forest_green
+        # Bright red = false positives (0->1 wrongly)
+        change_viz[false_positives] = bright_red
+        # Dark red = false negatives (1->0 wrongly)
+        change_viz[false_negatives] = dark_red
+        
+        axes[current_row, 2].imshow(change_viz, interpolation='nearest')
+        
+        # Clean up axes
+        for col in range(3):
+            axes[current_row, col].set_xticks([])
+            axes[current_row, col].set_yticks([])
             if col == 0:
-                ax.set_ylabel(f'Channel {row}')
+                axes[current_row, col].set_ylabel(f'{channel_names[row]}')
+        
+        current_row += 1
+    
+    # Remove empty subplots
+    for row in range(current_row, 21):
+        for col in range(3):
+            fig.delaxes(axes[row, col])
     
     if save_path:
         plt.savefig(save_path, bbox_inches='tight', dpi=300)
         plt.close()
     else:
         plt.show()
+
+def visualize_changes_for_tensorboard(writer, epoch, input_matrix, ground_truth, output_matrix):
+    """
+    Log matrix visualizations to tensorboard showing:
+    - Original input
+    - Ground truth
+    - Changes (green = correct predictions, red = incorrect predictions)
+    """
+    # Convert to numpy and ensure binary values
+    input_np = input_matrix.permute(1, 2, 0).cpu().detach().numpy()
+    ground_truth_np = ground_truth.permute(1, 2, 0).cpu().detach().numpy()
+    output_np = (torch.sigmoid(output_matrix) > 0.5).permute(1, 2, 0).cpu().detach().numpy()
+    
+    # Create figure
+    fig, axes = plt.subplots(21, 3, figsize=(15, 80))
+    titles = ['Input', 'Ground Truth', 'Changes (Green=Correct, Red=Wrong)']
+    
+    # Set column titles
+    for col, title in enumerate(titles):
+        axes[0, col].set_title(title, pad=20)
+    
+    forest_green = (0.133, 0.545, 0.133)
+
+    for row in range(21):
+        # Show input and ground truth
+        axes[row, 0].imshow(input_np[:,:,row], cmap='binary', interpolation='nearest')
+        axes[row, 1].imshow(ground_truth_np[:,:,row], cmap='binary', interpolation='nearest')
+        
+        # Create white background
+        change_viz = np.ones((*input_np.shape[:2], 3))
+        
+        # Set unchanged 1s to black
+        unchanged = (input_np[:,:,row] == output_np[:,:,row])
+        unchanged_ones = unchanged & (input_np[:,:,row] == 1)
+        change_viz[unchanged_ones] = [0, 1, 1]
+        
+        # Color the changes
+        changes = (input_np[:,:,row] != output_np[:,:,row])
+        correct_changes = changes & (output_np[:,:,row] == ground_truth_np[:,:,row])
+        incorrect_changes = changes & (output_np[:,:,row] != ground_truth_np[:,:,row])
+        
+        # Green = correct changes
+        change_viz[correct_changes] = forest_green
+        # Red = incorrect changes
+        change_viz[incorrect_changes] = [1, 0, 0]
+        
+        axes[row, 2].imshow(change_viz, interpolation='nearest')
+        
+        # Clean up axes
+        for col in range(3):
+            axes[row, col].set_xticks([])
+            axes[row, col].set_yticks([])
+            if col == 0:
+                axes[row, col].set_ylabel(channel_names[row])
+    
+    plt.tight_layout()
+    writer.add_figure('Matrix_Visualization', fig, epoch)
+    plt.close()
