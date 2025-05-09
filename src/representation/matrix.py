@@ -612,7 +612,8 @@ def make_belt_matrix(belts, w, h):
     for entity in belts:
         name = entity['name']
         idx = belt_index[name] - 1
-        direction = entity.get('direction', 0)//2
+        # CRUDE HACK
+        direction = (entity.get('direction', 0)%8)//2
         # Set the kind.
         if name in underground_index:
             kind_idx = 1
@@ -663,13 +664,15 @@ def make_inserter_matrix(inserters, w, h):
     for entity in inserters:
         name = entity['name']
         idx = inserter_index[name] - 1
+        # HACK!!! TODO: MAKE THIS NOT A HACK
+        direction = (entity.get('direction', 0)%8)//2
 
         # Determining the item's bounds.
         lx, ty = get_entity_topleft(entity)
         rx, by = lx+1, ty+1
         opacity_matrix[lx:rx, ty:by, 0] = 1
         item_id_matrix[lx:rx, ty:by, idx] = 1
-        direction_matrix[lx:rx, ty:by, entity.get('direction', 0)//2] = 1
+        direction_matrix[lx:rx, ty:by, direction] = 1
 
     map_matrix = {
         'inserter': opacity_matrix,

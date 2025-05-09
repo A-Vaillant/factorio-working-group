@@ -204,7 +204,7 @@ def print_matrix_channels(matrix, channel_names=None):
             print()
 
 
-def visualize_channel_comparison(inputs, targets, outputs, num_samples=1, cmap='viridis'):
+def visualize_8channel_comparison(inputs, targets, outputs, num_samples=1, cmap='viridis'):
     """
     Visualize a comparison of 8-channel data for inputs, targets, and outputs.
     
@@ -259,4 +259,41 @@ def visualize_channel_comparison(inputs, targets, outputs, num_samples=1, cmap='
         fig.colorbar(im1, cax=cbar_ax)
         
         plt.tight_layout(rect=[0, 0, 0.9, 0.95])
+        plt.show()
+
+
+def visualize_manychannel_matrices(input_matrix, ground_truth, output_matrix, save_path=None):
+    """
+    Visualize 21-channel binary matrices side by side.
+    
+    Args:
+        input_matrix: torch.Tensor of shape [21, 20, 20]
+        ground_truth: torch.Tensor of shape [21, 20, 20]
+        output_matrix: torch.Tensor of shape [21, 20, 20]
+        save_path: Optional path to save the figure
+    """
+    # Convert to numpy and ensure binary values
+    input_np = input_matrix.permute(1, 2, 0).cpu().detach().numpy()
+    ground_truth_np = ground_truth.permute(1, 2, 0).cpu().detach().numpy()
+    output_np = (torch.sigmoid(output_matrix) > 0.5).permute(1, 2, 0).cpu().detach().numpy()
+    
+    fig, axes = plt.subplots(21, 3, figsize=(15, 70))
+    plt.subplots_adjust(hspace=0.3)
+    
+    titles = ['Input', 'Ground Truth', 'Output']
+    for col, (title, data) in enumerate(zip(titles, 
+                                          [input_np, ground_truth_np, output_np])):
+        axes[0, col].set_title(title)
+        for row in range(21):
+            ax = axes[row, col]
+            im = ax.imshow(data[:,:,row], cmap='binary', interpolation='nearest')
+            ax.set_xticks([])
+            ax.set_yticks([])
+            if col == 0:
+                ax.set_ylabel(f'Channel {row}')
+    
+    if save_path:
+        plt.savefig(save_path, bbox_inches='tight', dpi=300)
+        plt.close()
+    else:
         plt.show()

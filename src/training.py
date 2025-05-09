@@ -9,7 +9,6 @@ from datetime import datetime
 import logging
 from src.pipeline.loaders import collate_numpy_matrices
 from src.processor import EntityPuncher
-from src.model import DeepQCNN
 from src.pipeline.datasets import load_dataset
 # from src.pipeline.filters import (Required,
 #                                   RecipeWhitelist,
@@ -220,7 +219,8 @@ class AugmentedListDataset(Dataset):
         return X, Y, c
 
 
-def prepare_dataset(dims=(20,20), repr_version=4):
+def prepare_dataset(dims=(20,20), repr_version=4,
+                    center=True):
     F = load_dataset('av-redscience')
     errors = 0
 
@@ -234,8 +234,8 @@ def prepare_dataset(dims=(20,20), repr_version=4):
         xs, ys, c = puncher.generate_state_action_pairs()
         for x, y, c_ in zip(xs, ys, c):
             try:
-                x_m = x.get_matrix(dims=dims, repr_version=repr_version)
-                y_m = y.get_matrix(dims=dims, repr_version=repr_version)
+                x_m = x.get_matrix(dims=dims, repr_version=repr_version, center=center)
+                y_m = y.get_matrix(dims=dims, repr_version=repr_version, center=center)
             except KeyError:
                 logger.warning("Couldn't convert a matrix due to a NameError. Recording and continuing.")
                 errors += 1
