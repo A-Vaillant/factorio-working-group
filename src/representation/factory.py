@@ -78,3 +78,9 @@ class Factory:
         else:
             raise RepresentationError(f"Unknown repr_version {repr_version}")
         return mats
+
+    def get_tensor(self, dims: tuple[int, int]):
+        # Uses default.
+        import torch
+        mats = self.get_matrix(dims).astype(np.float32)
+        return torch.from_numpy(mats).unsqueeze(0).permute(0, 3, 1, 2)
