@@ -23,6 +23,8 @@ logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s -
 logger = logging.getLogger(__name__)
 
 
+
+
 # AV: This ended up being a huge boondoggle and I'm not using it.
 def assembler_shape_loss(pred, asm_mask, weight):
     loss = torch.tensor(0.0, device=pred.device, dtype=pred.dtype)
@@ -175,7 +177,7 @@ def train_model(model, train_loader, val_loader, num_epochs=100, device='cuda',
         log_dir = f'runs/binary_matrix_transform_{datetime.now().strftime("%Y%m%d-%H%M%S")}'
     writer = SummaryWriter(log_dir)
     
-    criterion = nn.BCEWithLogitsLoss()
+    criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([15], device=device))
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode='min', factor=0.5, patience=5, verbose=True
@@ -216,6 +218,7 @@ def train_model(model, train_loader, val_loader, num_epochs=100, device='cuda',
 
         viz_data = None
         
+        tp, tn, fp, fn = 0, 0, 0, 0
         with torch.no_grad():
             for i, (data, target, _) in enumerate(val_loader):
                 data, target = data.to(device), target.to(device)
@@ -234,6 +237,11 @@ def train_model(model, train_loader, val_loader, num_epochs=100, device='cuda',
                 val_integrity_loss += integrity_loss.item()
                 
                 pred = (torch.sigmoid(output) > 0.5).float()
+                # Calculate TP, TN, FP, FN
+                tp += ((pred == 1) & (target == 1)).sum().item()
+                tn += ((pred == 0) & (target == 0)).sum().item()
+                fp += ((pred == 1) & (target == 0)).sum().item()
+                fn += ((pred == 0) & (target == 1)).sum().item()
                 correct += (pred == target).sum().item()
                 total += target.numel()
         
@@ -244,8 +252,14 @@ def train_model(model, train_loader, val_loader, num_epochs=100, device='cuda',
         val_loss /= len(val_loader)
         val_bce_loss /= len(val_loader)
         val_integrity_loss /= len(val_loader)
+
+        # Calculate metrics
         accuracy = 100. * correct / total
-        
+        tp_rate = 100. * tp / (tp + fn) if (tp + fn) > 0 else 0  # Sensitivity/Recall
+        tn_rate = 100. * tn / (tn + fp) if (tn + fp) > 0 else 0  # Specificity
+        precision = 100. * tp / (tp + fp) if (tp + fp) > 0 else 0
+        f1_score = 2 * precision * tp_rate / (precision + tp_rate) if (precision + tp_rate) > 0 else 0
+
         # Log to tensorboard
         writer.add_scalar('Loss/train', train_loss, epoch)
         writer.add_scalar('Loss/train_bce', train_bce_loss, epoch)
@@ -254,27 +268,72 @@ def train_model(model, train_loader, val_loader, num_epochs=100, device='cuda',
         writer.add_scalar('Loss/val_bce', val_bce_loss, epoch)
         writer.add_scalar('Loss/val_integrity', val_integrity_loss, epoch)
         writer.add_scalar('Accuracy/val', accuracy, epoch)
+        writer.add_scalar('TP_Rate/val', tp_rate, epoch)
+        writer.add_scalar('TN_Rate/val', tn_rate, epoch)
+        writer.add_scalar('Precision/val', precision, epoch)
+        writer.add_scalar('F1_Score/val', f1_score, epoch)
         writer.add_scalar('LR', optimizer.param_groups[0]['lr'], epoch)
 
         # Add matrix visualization every viz_interval epochs
         if epoch % viz_interval == 0 and viz_data is not None:
             input_matrix, target_matrix, output_matrix = viz_data
-            visualize_changes_for_tensorboard(writer, epoch, 
-                                           input_matrix, target_matrix, output_matrix)
-        
+            visualize_changes_for_tensorboard(writer, epoch,
+                                            input_matrix, target_matrix, output_matrix)
+
         print(f'Epoch: {epoch+1}')
         print(f'Training Loss: {train_loss:.4f} (BCE: {train_bce_loss:.4f}, Integrity: {train_integrity_loss:.4f})')
         print(f'Validation Loss: {val_loss:.4f} (BCE: {val_bce_loss:.4f}, Integrity: {val_integrity_loss:.4f})')
         print(f'Validation Accuracy: {accuracy:.2f}%')
-        
+        print(f'True Positive Rate: {tp_rate:.2f}% | True Negative Rate: {tn_rate:.2f}%')
+        print(f'Precision: {precision:.2f}% | F1 Score: {f1_score:.2f}%')
+
         scheduler.step(val_loss)
-        
+
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             torch.save(model.state_dict(), 'best_model.pt')
-    
-    writer.close()
 
+        writer.close()
+
+
+def test_model(model, test_loader, device='cpu',
+               integrity_weight=0.1):
+    model.eval()
+    test_loss = 0
+    test_bce_loss = 0
+    test_integrity_loss = 0
+    correct = 0
+    total = 0
+    criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([15], device=device))
+
+    with torch.no_grad():
+        for i, (data, target, *_) in enumerate(test_loader):
+            data, target = data.to(device), target.to(device)
+            output = model(data)
+
+            bce_loss = criterion(output, target.float())
+            integrity_loss = matrix_integrity_loss(output)
+            loss = bce_loss + integrity_weight * integrity_loss
+            
+            test_loss += loss.item()
+            test_bce_loss += bce_loss.item()
+            test_integrity_loss += integrity_loss.item()
+            
+            pred = (torch.sigmoid(output) > 0.5).float()
+            correct += (pred == target).sum().item()
+            total += target.numel()
+
+    # Calculate average losses
+    test_loss /= len(test_loader)
+    test_bce_loss /= len(test_loader)
+    test_integrity_loss /= len(test_loader)
+    accuracy = 100. * correct / total
+
+    # Removed tensorboard logging
+    print(f'Test Loss: {test_loss:.4f} (BCE: {test_bce_loss:.4f}, Integrity: {test_integrity_loss:.4f})')
+    print(f'Test Accuracy: {accuracy:.2f}%')
+    
+    
 class AugmentedListDataset(Dataset):
     def __init__(self, Xs, cs, Ys, rotations=4):
         self.data = list(zip(Xs, cs, Ys))
