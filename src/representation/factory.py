@@ -26,6 +26,26 @@ class Factory:
     _bp: Optional[Blueprint]=None
     # matrix: Optional[np.array]=None
 
+    @staticmethod
+    def fix_direction(input_list: list):
+        # First, figure out if we need to update directions.
+        known_directions = {entity.get('direction') for entity in input_list}
+        if known_directions & {8, 12} != set():  # Contains 8 or 12.
+            modern_directions = True
+        if known_directions & {2, 6} != set():  # Contains a 2 or a 6.
+            legacy_directions = True
+        if modern_directions and legacy_directions:
+            raise RepresentationError("Provided information has both LegacyDirection and Direction: " + ','.join(f"{k}:{k.get('direction')}" for k in input_list))
+        elif modern_directions:
+            pass
+        elif legacy_directions:
+            for entity in input_list:
+                if 'direction' in entity:
+                    entity['direction'] *= 2
+        else:  # AMBIGUOUS!!!
+            logging.debug("Factory has ambiguous directions; assuming Modern.")
+        return input_list
+            
     @classmethod
     def from_blueprint(cls, input: Blueprint):
         j = input.to_dict()
