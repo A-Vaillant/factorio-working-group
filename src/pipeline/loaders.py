@@ -47,7 +47,7 @@ class FactoryLoader():
                         self.update_factories_via_blueprintable(k, v)
 
         elif 'csv' in str(raw_data_src):  # csv loader
-            csv.field_size_limit(sys.maxsize)
+            csv.field_size_limit(int(1e7))
             # Allows us to load singular CSVs.
             if loading_root.suffix == '.csv':
                 iteration_range = [loading_root]
@@ -64,7 +64,7 @@ class FactoryLoader():
                                 v = string_to_JSON(row['data'])
                             except MalformedBlueprintStringError:
                                 logging.warning(f"Malformed blueprint string detected for {k}. Skipping.")
-                            self.update_factories(k, v)
+                            self.update_factories_via_json(k, v)
                     except UnicodeDecodeError:
                         logging.warning(f"Could not use {str(csvfile)} due to UnicodeDecodeError.")
 

@@ -82,33 +82,29 @@ def center_in_N(matrix, N: int = 15) -> np.ndarray[np.ndarray]:
         centered_matrix = np.zeros((N, N, c), dtype=int)
 
     t, l, b, r = find_bounding_box(matrix)
-    if b - t > N:  # too tall!
-        logging.error(f"Matrix is too tall, height of {h}, {b-t} but dims are {N}x{N}.")
-        # return matrix
-        return
-    else:
-        h = b - t
-    if r - l > N:  # too wide!
-        logging.error(f"Matrix is too wide, width of {w}, {r-l} but dims are {N}x{N}.")
-        # return matrix
-        return
-    else:
-        w = r - l
+    # logging.info(f"Bounding box: top={t}, left={l}, bottom={b}, right={r}")
+    # Calculate content dimensions
+    content_h = b - t + 1
+    content_w = r - l + 1
+    
+    # Validate size
+    if content_h > N or content_w > N:
+        logging.error(f"Content size {content_h}x{content_w} exceeds target size {N}x{N}")
+        return None
     
     # So, we need the top-left and bottom-right for the matrix.
     # 
     # Calculate start positions for centering
-    start_h = (N - h) // 2
-    start_w = (N - w) // 2
+    start_h = (N - content_h) // 2
+    start_w = (N - content_w) // 2
 
-    matrix = matrix[t:b, l:r, :]
-    
+    content = matrix[t:b+1, l:r+1, :]
+    # logging.info(f"Extracted content shape: {content.shape}")
+    centered_matrix[start_h:start_h+content_h, start_w:start_w+content_w, :] = content
+
     # Place the original matrix in the center
     if c == 1:
-        centered_matrix[start_h:start_h+h, start_w:start_w+w] = matrix.reshape(h, w)
-    else:
-        centered_matrix[start_h:start_h+h, start_w:start_w+w, :] = matrix
-    
+        centered_matrix[start_h:start_h+content_h, start_w:start_w+content_w] = centered_matrix.reshape(h, w)
     return centered_matrix
 
 
@@ -701,4 +697,61 @@ def make_pole_matrix(poles, w, h):
     return {
         'pole': opacity_matrix,
         'item': item_id_matrix
+    }
+
+def split_matrix_into_entities(matrix):
+    """Split a 21-channel matrix into entity-specific matrices.
+    
+    The input matrix has channels in this order:
+    - opacity: [assembler, belt, inserter, pole] (4)
+    - direction: [N, E, S, W] (4) 
+    - recipe: [r1, r2, r3, r4, r5] (5)
+    - item: [i1, i2, i3] (3)
+    - kind: [k1, k2, k3] (3)
+    - sourcesink: [source, sink] (2)
+    
+    Returns:
+    - Dictionary with keys 'assembler', 'belt', 'inserter', 'pole'
+      Each value is a binary matrix where 1 indicates that type of entity
+    """
+    h, w = matrix.shape[:2]
+    
+    # Create entity matrices
+    assembler_matrix = np.zeros((h, w), dtype=int)
+    belt_matrix = np.zeros((h, w), dtype=int)
+    inserter_matrix = np.zeros((h, w), dtype=int)
+    pole_matrix = np.zeros((h, w), dtype=int)
+    
+    # Extract opacity channels (first 4 channels)
+    assembler_mask = matrix[:, :, 0]
+    belt_mask = matrix[:, :, 1]
+    inserter_mask = matrix[:, :, 2]
+    pole_mask = matrix[:, :, 3]
+    
+    # For each position where an entity exists (opacity=1),
+    # assign a unique integer based on the other channels
+    
+    # Assemblers: influenced by recipe (channels 8-12)
+    recipe_channels = matrix[:, :, 8:13]
+    recipe_indices = np.argmax(recipe_channels, axis=2) + 1
+    assembler_matrix[assembler_mask == 1] = recipe_indices[assembler_mask == 1]
+    
+    # Belts: influenced by direction (4-7) and kind (16-18)
+    direction_channels = matrix[:, :, 4:8]
+    kind_channels = matrix[:, :, 16:19]
+    direction_indices = np.argmax(direction_channels, axis=2) + 1
+    kind_indices = np.argmax(kind_channels, axis=2) + 1
+    belt_matrix[belt_mask == 1] = direction_indices[belt_mask == 1] + (kind_indices[belt_mask == 1] - 1) * 4
+    
+    # Inserters: influenced by direction (4-7)
+    inserter_matrix[inserter_mask == 1] = direction_indices[inserter_mask == 1]
+    
+    # Poles: just use the mask since they don't have orientation
+    pole_matrix[pole_mask == 1] = 1
+    
+    return {
+        'assembler': assembler_matrix,
+        'belt': belt_matrix,
+        'inserter': inserter_matrix,
+        'pole': pole_matrix
     }

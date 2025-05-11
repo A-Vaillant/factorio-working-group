@@ -427,3 +427,71 @@ def visualize_changes_for_tensorboard(writer, epoch, input_matrix, ground_truth,
     plt.tight_layout()
     writer.add_figure('Matrix_Visualization', fig, epoch)
     plt.close()
+    
+    
+def visualize_factory_matrix(entity_matrices):
+    """Convert entity matrices into a visual representation using Unicode characters.
+    
+    Symbol mapping:
+    Assemblers (recipes 1-5): ⬣ ⬢ ⬡ ⬥ ⬦
+    Belts:
+        Normal:    → ↓ ← ↑
+        Underground: ⇒ ⇓ ⇐ ⇑
+        Splitter:   ⇢ ⇣ ⇠ ⇡
+    Inserters:     ▻ ▾ ◅ ▴
+    Poles:         ⚡
+    Empty:         ·
+    """
+    h, w = next(iter(entity_matrices.values())).shape
+    visual_matrix = np.full((h, w), '·', dtype=str)
+    
+    # Character mappings
+    assembler_chars = ['·', '⬣', '⬢', '⬡', '⬥', '⬦']
+    belt_normal = ['·', '→', '↓', '←', '↑']
+    belt_underground = ['·', '⇒', '⇓', '⇐', '⇑']
+    belt_splitter = ['·', '⇢', '⇣', '⇠', '⇡']
+    inserter_chars = ['·', '▻', '▾', '◅', '▴']
+    pole_chars = ['·', '⚡']
+    
+    # Layer the entities from back to front
+    # First poles (background)
+    pole_mask = entity_matrices['pole'] > 0
+    visual_matrix[pole_mask] = pole_chars[1]
+    
+    # Then belts
+    belt_matrix = entity_matrices['belt']
+    belt_mask = belt_matrix > 0
+    for i in range(belt_mask.shape[0]):
+        for j in range(belt_mask.shape[1]):
+            if belt_matrix[i,j] > 0:
+                direction = ((belt_matrix[i,j] - 1) % 4) + 1
+                kind = (belt_matrix[i,j] - 1) // 4
+                if kind == 0:
+                    visual_matrix[i,j] = belt_normal[direction]
+                elif kind == 1:
+                    visual_matrix[i,j] = belt_underground[direction]
+                else:
+                    visual_matrix[i,j] = belt_splitter[direction]
+    
+    # Then inserters
+    inserter_matrix = entity_matrices['inserter']
+    inserter_mask = inserter_matrix > 0
+    for i in range(inserter_mask.shape[0]):
+        for j in range(inserter_mask.shape[1]):
+            if inserter_matrix[i,j] > 0:
+                visual_matrix[i,j] = inserter_chars[inserter_matrix[i,j]]
+    
+    # Finally assemblers (foreground)
+    assembler_matrix = entity_matrices['assembler']
+    assembler_mask = assembler_matrix > 0
+    for i in range(assembler_mask.shape[0]):
+        for j in range(assembler_mask.shape[1]):
+            if assembler_matrix[i,j] > 0:
+                visual_matrix[i,j] = assembler_chars[assembler_matrix[i,j]]
+    
+    return visual_matrix
+
+def print_factory(visual_matrix):
+    """Print the visual matrix with proper spacing."""
+    for row in visual_matrix.T:
+        print(' '.join(row))

@@ -47,6 +47,15 @@ class RecipeWhitelist:
         all_recipes.remove(None)  # If a KeyError comes here, wrap it in a try/except.
         return all(r in self.allows for r in all_recipes)
 
+class NoUnusedAssemblers:
+    # Just kills any blueprint with unset assembler recipes.
+    def __call__(self, factory: Factory) -> bool:
+        try:
+            entities = factory.json['blueprint']['entities']
+        except KeyError:
+            return False
+        all_assemblers = [e for e in entities if e['name'].startswith('assembling')]
+        return not any(a.get('recipe') is None for a in all_assemblers)
 
 class Blacklist:
     def __init__(self, entities):

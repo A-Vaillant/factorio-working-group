@@ -5,7 +5,7 @@ import pickle
 from src.pipeline import FactoryLoader
 
 
-datasets = {
+dataset_map = {
     'av-redscience': 'txt/av',
     'factorio-tech-json': 'json/factorio-tech',
     'factorio-tech': 'csv/factorio-tech',
@@ -197,4 +197,4 @@ def load_dataset(dataset_name: str='av-redscience',
                   **kwargs):
     """ dataset_name: The name of a prepared dataset. 
     """
-    return FactoryLoader(datasets[dataset_name], **kwargs)
+    return FactoryLoader(dataset_map[dataset_name], **kwargs)
