@@ -100,11 +100,12 @@ def copy_factory(factory):
     bp = get_blueprintable_from_string(factory.blueprint.to_string())
     return Factory.from_blueprint(bp)
 
-
-class EntityPuncher():
+class PuncherPrototype():
+    # Base class for a PoD-based dataset synthesizer.
+    # Just implement the order you destroy and the entities you don't destroy and "ur set".
     channels = ['assembler', 'inserter', 'belt', 'pole',
                 'direction', 'recipe', 'item', 'sourcesink']
-
+    
     def __init__(self, factory):
         # We keep updating the factory object held by the puncher.
         self.original_factory = factory
@@ -112,8 +113,79 @@ class EntityPuncher():
         self.blueprint = deepcopy(factory.blueprint)
         self.removed_positions = set()
         logger.debug(f"Initialized EntityPuncher with {len(self.blueprint.entities)} entities")
+        
+    def _save_entities(self):
+        # Adds entities to self.removed_positions to prevent them from being deleted.
+        raise NotImplemented()
+    
+    def _next_removal_order(self):
+        raise NotImplemented()
+    
+    def generate_state_action_pairs(self, num_pairs: int=None):
+        """
+        Returns lists of (before_factory, after_factory, repair_action_idx).
+        """
+        pairs = []
+        # Add identity transforms.
+        factory = Factory.from_blueprint(deepcopy(self.blueprint))
+        pairs.append((factory, factory, 0))
 
-    def _save_an_assembler(self):
+        self._save_entities()
+        entity_iterator =  self._next_removal_order(self.blueprint.entities)
+        if num_pairs is not None:
+            entity_iterator = itertools.islice(entity_iterator, 0, num_pairs)
+        for removable in entity_iterator:
+            ch = self.channels.index(map_entity_to_key(removable))
+
+            # record 'before'
+            before_factory = Factory.from_blueprint(deepcopy(self.blueprint))
+            repair_action = ch
+
+            self.removed_positions.add(tuple(removable.tile_position._data))
+            self.blueprint.entities.recursive_remove(removable)
+
+            after_factory = Factory.from_blueprint(deepcopy(self.blueprint))
+
+            pairs.append((before_factory, after_factory, repair_action))
+
+        # unpack into arrays
+        X_before = np.stack([p[0] for p in pairs], axis=0)
+        X_after  = np.stack([p[1] for p in pairs], axis=0)
+        y        = np.array([p[2] for p in pairs])
+        return X_before, X_after, y
+    
+
+class SeedPuncher(PuncherPrototype):
+    def _save_entities(self):
+        from collections import defaultdict
+        assemblers = [e for e in self.original_factory.blueprint.entities if map_entity_to_key(e)=='assembler']
+        inserters_to = defaultdict(list)
+        inserters_from = defaultdict(list)
+        for i, asm in enumerate(assemblers):
+            for ins in self.original_factory.blueprint.entities:
+                # TODO: An additional case for long-armed inserters.
+                if map_entity_to_key(ins) != 'inserter': continue  # Skip non-inserters.
+                if ins.tile_position:  # TODO: Check if the inserter is adjacent to the inserter `asm`.
+                    # If it is, add it to the list.
+                    # Use direction to determine.
+                    if True:  # TODO: Make this a direction check. This honestly could be combined somehow
+                        inserters_to[i].append(ins)
+                    else:
+                        inserters_from[i].append(ins)
+        # Then: save each assembler and an adjacent inserter pointing into and out of it. Details, details.
+                        
+    def _next_removal_order(self):
+        # TODO:
+        # First, we'll place the belts by the adjacent inserters that are there.
+        # Then we'll remove stuff randomly and in a fashion similar to a garden of forking branches, which will produce
+        # some large permutation of data.
+        # (If there's n entities to remove, that's n! as the upper bound.)
+        ...
+        
+
+        
+class EntityPuncher(PuncherPrototype):
+    def _save_entities(self):
         assemblers = [e for e in self.original_factory.blueprint.entities if map_entity_to_key(e)=='assembler']
         # pick one assembler at random
         chosen = random.choice(assemblers)
@@ -131,8 +203,6 @@ class EntityPuncher():
         )
 
     def _belt_chains(self, entities):
-        from collections import defaultdict
-
         chains = []
         unused = set([id(e) for e in entities if map_entity_to_key(e) == 'belt'])
         pos_map = {tuple(e.tile_position): e for e in entities if map_entity_to_key(e) == 'belt'}
@@ -140,9 +210,9 @@ class EntityPuncher():
         # Correct 4-way direction mapping
         direction_to_vector = {
             0: (0, -1),  # Up (north)
-            2: (0, 1),   # Down (south)
-            4: (-1, 0),  # Left (west)
-            6: (1, 0),   # Right (east)
+            4: (1, 0),   # Right (east)
+            8: (0, 1),   # Down (south)
+            12: (-1, 0),  # Left (west)
         }
 
         for e in entities:
@@ -201,36 +271,3 @@ class EntityPuncher():
             else:
                 logger.debug(f"SKIPPING entity at position {position} - already in removed_positions")
                 continue
-
-    def generate_state_action_pairs(self, num_pairs: int=None):
-        """
-        Returns lists of (before_factory, after_factory, repair_action_idx).
-        """
-        pairs = []
-        # Add identity transforms.
-        factory = Factory.from_blueprint(deepcopy(self.blueprint))
-        pairs.append((factory, factory, 0))
-
-        self._save_an_assembler()
-        entity_iterator =  self._next_removal_order(self.blueprint.entities)
-        if num_pairs is not None:
-            entity_iterator = itertools.islice(entity_iterator, 0, num_pairs)
-        for removable in entity_iterator:
-            ch = self.channels.index(map_entity_to_key(removable))
-
-            # record 'before'
-            before_factory = Factory.from_blueprint(deepcopy(self.blueprint))
-            repair_action = ch
-
-            self.removed_positions.add(tuple(removable.tile_position._data))
-            self.blueprint.entities.recursive_remove(removable)
-
-            after_factory = Factory.from_blueprint(deepcopy(self.blueprint))
-
-            pairs.append((before_factory, after_factory, repair_action))
-
-        # unpack into arrays
-        X_before = np.stack([p[0] for p in pairs], axis=0)
-        X_after  = np.stack([p[1] for p in pairs], axis=0)
-        y        = np.array([p[2] for p in pairs])
-        return X_before, X_after, y
