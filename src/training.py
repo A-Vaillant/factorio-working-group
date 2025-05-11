@@ -178,6 +178,7 @@ def train_model(model, train_loader, val_loader, num_epochs=100, device='cuda',
     writer = SummaryWriter(log_dir)
     
     criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([15], device=device))
+    # criterion = nn.L1Loss()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode='min', factor=0.5, patience=5, verbose=True
@@ -291,7 +292,7 @@ def train_model(model, train_loader, val_loader, num_epochs=100, device='cuda',
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            torch.save(model.state_dict(), 'best_model.pt')
+            torch.save(model.state_dict(), f'{model.filename}.pt')
 
         writer.close()
 
