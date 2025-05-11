@@ -2,7 +2,7 @@ import torch
 import numpy as np
 import unittest
 
-from src.model import matrix_integrity_loss
+from src.training import matrix_integrity_loss
 from src.representation.factory import Factory
 
 
@@ -153,7 +153,7 @@ class TestMatrixIntegrityLoss(unittest.TestCase):
         loss = matrix_integrity_loss(pred_matrix)
         
         # This is a valid configuration, so loss should be low
-        self.assertAlmostEqual(loss.item(), 0.00, delta=0.05)
+        self.assertLess(loss.item(), 0.001)
        
         # loss_with_overlap = matrix_integrity_loss(pred_matrix)
         
