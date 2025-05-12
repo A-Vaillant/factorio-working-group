@@ -174,7 +174,9 @@ def matrix_integrity_loss(pred, weights=None):
 def train_model(model, train_loader, val_loader, num_epochs=100, device='cuda',
                 integrity_weight=0.1, log_dir=None, viz_interval=5):
     if log_dir is None:
-        log_dir = f'runs/binary_matrix_transform_{datetime.now().strftime("%Y%m%d-%H%M%S")}'
+        log_dir = f'runs/{model.filename}_{datetime.now().strftime("%Y%m%d-%H%M%S")}'
+    # Make sure the models folder exists.
+    os.makedirs('models', exist_ok=True)
     writer = SummaryWriter(log_dir)
     
     criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([15], device=device))
@@ -292,7 +294,7 @@ def train_model(model, train_loader, val_loader, num_epochs=100, device='cuda',
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            torch.save(model.state_dict(), f'{model.filename}.pt')
+            torch.save(model.state_dict(), f'models/{model.filename}.pt')
 
         writer.close()
 
