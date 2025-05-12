@@ -360,6 +360,7 @@ class UNetConvBlock(nn.Module): # Helper for U-Net like structure
     def forward(self, x):
         return self.cnn(x)
 
+
 class FactorioCNN_PixelOutput(nn.Module):
     filename = 'factorio_unet'
 
@@ -460,6 +461,7 @@ class FactorioCNN_PixelOutput(nn.Module):
                              activation_presence_threshold=0.5,
                              opacity_threshold=0.5): # Threshold to decide presence from opacity probabilities
         final_consistent_output = torch.zeros_like(output_logits)
+        current_idx = 0
         
         C_opacity_out = self.C_opacity
         C_dim_out, C_recipe_out, C_item_out, C_kind_out, C_ss_out = self.dependent_dims
@@ -477,7 +479,7 @@ class FactorioCNN_PixelOutput(nn.Module):
         opacity_one_hot = torch.zeros_like(opacity_probs_for_type_selection).scatter_(1, max_opacity_prob, 1.0)
         # Store this one-hot opacity, but only where an entity is present
         final_consistent_output[:, current_idx : current_idx + C_opacity_out, :, :] = opacity_one_hot * is_present_hard_mask
-        current_idx = self.independent_dims[0]  # Opacity channels.
+        current_idx = C_opacity_out
         
         # One-hot for the rest of the variables too.
         for dim in self.dependent_dims:
@@ -511,3 +513,9 @@ class FactorioCNN_PixelOutput(nn.Module):
         #     pass # Implement chosen conflict resolution
 
         return final_consistent_output
+
+
+class FactorioCNN_Repr5(FactorioCNN_PixelOutput):
+    def __init__(self, *args, **kwargs):
+        super().__init__(
+            4, 4, 5, 3, 3, 2, 32, 21, *args, **kwargs)
