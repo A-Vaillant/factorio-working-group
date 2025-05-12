@@ -9,6 +9,7 @@ import itertools
 from copy import deepcopy
 
 from draftsman.blueprintable import get_blueprintable_from_string
+from draftsman.constants import Direction
 from src.representation import (Factory,
                                 map_entity_to_key)
 
@@ -156,23 +157,39 @@ class PuncherPrototype():
     
 
 class SeedPuncher(PuncherPrototype):
+    def _save_entity(self, entity):
+        self.removed_positions.add(tuple(entity.tile_position._data))
+        
     def _save_entities(self):
         from collections import defaultdict
         assemblers = [e for e in self.original_factory.blueprint.entities if map_entity_to_key(e)=='assembler']
         inserters_to = defaultdict(list)
         inserters_from = defaultdict(list)
         for i, asm in enumerate(assemblers):
+            asm_x, asm_y = asm.tile_position._data
+            is_in_assembler = lambda x, y: (asm_x <= x <= asm_x+2) and (asm_y <= y <= asm_y+2)
             for ins in self.original_factory.blueprint.entities:
+                ins.direction = Direction(ins.direction)
                 # TODO: An additional case for long-armed inserters.
                 if map_entity_to_key(ins) != 'inserter': continue  # Skip non-inserters.
-                if ins.tile_position:  # TODO: Check if the inserter is adjacent to the inserter `asm`.
-                    # If it is, add it to the list.
-                    # Use direction to determine.
-                    if True:  # TODO: Make this a direction check. This honestly could be combined somehow
-                        inserters_to[i].append(ins)
-                    else:
-                        inserters_from[i].append(ins)
-        # Then: save each assembler and an adjacent inserter pointing into and out of it. Details, details.
+                if ins['name'].contains('long'):
+                    magnitude = 2
+                else:
+                    magnitude = 1
+                dropoff = ins.tile_position + ins.direction.to_vector(magnitude=magnitude)
+                pickup = ins.tile_position - ins.direction.to_vector(magnitude=magnitude)
+                
+                if is_in_assembler(dropoff):
+                    inserters_to[i].append(ins)
+                elif is_in_assembler(pickup):
+                    inserters_from[i].append(ins)
+                else:
+                    pass
+            
+        for ix, assembler in enumerate(assemblers):
+            self._save_entity(assembler)
+            for ins in inserters_to[ix]:
+                self._save_entity(ins)
                         
     def _next_removal_order(self):
         # TODO:
