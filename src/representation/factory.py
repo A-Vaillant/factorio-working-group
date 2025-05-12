@@ -29,6 +29,7 @@ class Factory:
     @staticmethod
     def fix_direction(input_list: list):
         # First, figure out if we need to update directions.
+        modern_directions, legacy_directions = False, False
         known_directions = {entity.get('direction') for entity in input_list}
         if known_directions & {8, 12} != set():  # Contains 8 or 12.
             modern_directions = True
@@ -51,6 +52,8 @@ class Factory:
         j = input.to_dict()
         if 'blueprint' not in j:
             raise RepresentationError("Passed in something that wasn't a blueprint.")
+        j['blueprint']['entities'] = cls.fix_direction(j['blueprint']['entities'])
+        input = get_blueprintable_from_JSON(j)
         return Factory(_bp=input, json=j)
 
     @classmethod
@@ -65,6 +68,7 @@ class Factory:
                 raise RepresentationError("Failed for an unknown issue.")
         # if 'wires' in j['blueprint']:
         #     del(j['blueprint']['wires'])
+        j['blueprint']['entities'] = cls.fix_direction(j['blueprint']['entities'])
         return Factory(json=j)        
         
     # note: you can just do list[cls] in Python 3.10+. a thing to consider in setting dependencies.

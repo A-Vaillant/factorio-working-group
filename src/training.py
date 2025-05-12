@@ -9,8 +9,9 @@ import os
 from datetime import datetime
 import logging
 from src.pipeline.loaders import collate_numpy_matrices
-from src.processor import EntityPuncher
+from src.processor import EntityPuncher, SeedPuncher
 from src.pipeline.datasets import load_dataset
+from src.utils import generate_distinct_seeds
 # from src.pipeline.filters import (Required,
 #                                   RecipeWhitelist,
 #                                   SizeRestrictor,
@@ -371,8 +372,13 @@ class AugmentedListDataset(Dataset):
         return X, Y, c
 
 
-def prepare_dataset(dims=(20,20), repr_version=4,
-                    center=True):
+def prepare_dataset(dims=(20,20), repr_version=5,
+                    variant='entity', center=True):
+    if variant == 'entity':
+        Puncher = EntityPuncher
+    elif variant == 'seed':
+        Puncher = SeedPuncher
+        
     F = load_dataset('av-redscience')
     errors = 0
 
@@ -382,7 +388,7 @@ def prepare_dataset(dims=(20,20), repr_version=4,
     i = 0
     for f in F.factories.values():
         i += 1
-        puncher = EntityPuncher(f)
+        puncher = Puncher(f)
         xs, ys, c = puncher.generate_state_action_pairs()
         for x, y, c_ in zip(xs, ys, c):
             try:
@@ -397,6 +403,32 @@ def prepare_dataset(dims=(20,20), repr_version=4,
             cs.append(c_)
     return (Ys, cs, Xs)  # Switch before and after factories HERE.
 
+def prepare_seed_dataset(dims, repr_version, seed_paths: int = 5,
+                         center=True):
+    F = load_dataset('av-redscience')
+    errors = 0
+    seeds = generate_distinct_seeds(seed_paths)
+    Xs = []
+    Ys = []
+    cs = []
+    i = 0
+    for f in F.factories.values():
+        i += 1
+        for random_seed in seeds:
+            puncher = SeedPuncher(f, random_seed=random_seed)
+            xs, ys, c = puncher.generate_state_action_pairs()
+            for x, y, c_ in zip(xs, ys, c):
+                try:
+                    x_m = x.get_matrix(dims=dims, repr_version=repr_version, center=center)
+                    y_m = y.get_matrix(dims=dims, repr_version=repr_version, center=center)
+                except KeyError:
+                    logger.warning("Couldn't convert a matrix due to a NameError. Recording and continuing.")
+                    errors += 1
+                    continue
+                Xs.append(x_m)
+                Ys.append(y_m)
+                cs.append(c_)
+    return (Ys, cs, Xs)  # Switch before and after factories HERE.
 
 def split_dataloader(dataloader, val_split=0.2, random_seed=42):
     """

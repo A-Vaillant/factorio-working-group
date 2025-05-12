@@ -107,16 +107,22 @@ class PuncherPrototype():
     channels = ['assembler', 'inserter', 'belt', 'pole',
                 'direction', 'recipe', 'item', 'sourcesink']
     
-    def __init__(self, factory):
+    def __init__(self, factory, random_seed: int = None):
         # We keep updating the factory object held by the puncher.
         self.original_factory = factory
         factory.blueprint.wires = []  # Clear associations, as we don't use them.
         self.blueprint = deepcopy(factory.blueprint)
         self.removed_positions = set()
+        self.random_seed = random_seed
         logger.debug(f"Initialized EntityPuncher with {len(self.blueprint.entities)} entities")
+        
+    def _save_entity(self, entity):
+        # Adds an entity to removed positions. Notably, doesn't actually remove it. (Do it yourself.)
+        self.removed_positions.add(tuple(entity.tile_position._data))       
         
     def _save_entities(self):
         # Adds entities to self.removed_positions to prevent them from being deleted.
+        # Called once to save all that must be saved.
         raise NotImplemented()
     
     def _next_removal_order(self):
@@ -142,7 +148,7 @@ class PuncherPrototype():
             before_factory = Factory.from_blueprint(deepcopy(self.blueprint))
             repair_action = ch
 
-            self.removed_positions.add(tuple(removable.tile_position._data))
+            self._save_entity(removable)
             self.blueprint.entities.recursive_remove(removable)
 
             after_factory = Factory.from_blueprint(deepcopy(self.blueprint))
@@ -157,9 +163,6 @@ class PuncherPrototype():
     
 
 class SeedPuncher(PuncherPrototype):
-    def _save_entity(self, entity):
-        self.removed_positions.add(tuple(entity.tile_position._data))
-        
     def _save_entities(self):
         from collections import defaultdict
         assemblers = [e for e in self.original_factory.blueprint.entities if map_entity_to_key(e)=='assembler']
@@ -172,16 +175,16 @@ class SeedPuncher(PuncherPrototype):
                 ins.direction = Direction(ins.direction)
                 # TODO: An additional case for long-armed inserters.
                 if map_entity_to_key(ins) != 'inserter': continue  # Skip non-inserters.
-                if ins['name'].contains('long'):
+                if ins['name'].startswith('long'):
                     magnitude = 2
                 else:
                     magnitude = 1
                 dropoff = ins.tile_position + ins.direction.to_vector(magnitude=magnitude)
                 pickup = ins.tile_position - ins.direction.to_vector(magnitude=magnitude)
                 
-                if is_in_assembler(dropoff):
+                if is_in_assembler(*dropoff):
                     inserters_to[i].append(ins)
-                elif is_in_assembler(pickup):
+                elif is_in_assembler(*pickup):
                     inserters_from[i].append(ins)
                 else:
                     pass
@@ -190,16 +193,40 @@ class SeedPuncher(PuncherPrototype):
             self._save_entity(assembler)
             for ins in inserters_to[ix]:
                 self._save_entity(ins)
-                        
-    def _next_removal_order(self):
-        # TODO:
-        # First, we'll place the belts by the adjacent inserters that are there.
-        # Then we'll remove stuff randomly and in a fashion similar to a garden of forking branches, which will produce
-        # some large permutation of data.
-        # (If there's n entities to remove, that's n! as the upper bound.)
-        ...
         
+        self.inserters_to = inserters_to
+        self.inserters_from = inserters_from
+        self.assemblers = assemblers
 
+    def _is_removable(self, entity):
+        return tuple(entity.tile_position._data) not in self.removed_positions
+    
+    def _next_removal_order(self, _):
+        if self.random_seed is not None:
+            random.seed(self.random_seed)
+            
+        # First, start with belts that we're dropping off and picking up from.
+        for inslist in self.inserters_to.values():
+            for ins in inslist:
+                magnitude = 2 if ins['name'].startswith('long') else 1
+                pickup = ins.tile_position - ins.direction.to_vector(magnitude=magnitude)
+                e = self.original_factory.blueprint.find_entity_at_position(pickup)
+                if e is not None and self._is_removable(e):
+                    yield e
+        for inslist in self.inserters_from.values():
+            for ins in inslist:
+                magnitude = 2 if ins['name'].startswith('long') else 1
+                dropoff = ins.tile_position + ins.direction.to_vector(magnitude=magnitude)
+                e = self.original_factory.blueprint.find_entity_at_position(dropoff)
+                if e is not None and self._is_removable(e):
+                    yield e
+                
+        remnants = [entity for entity in self.original_factory.blueprint.entities if self._is_removable(entity)]
+        random.shuffle(remnants)
+        for e in remnants:
+            yield e
+
+        
         
 class EntityPuncher(PuncherPrototype):
     def _save_entities(self):
