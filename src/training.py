@@ -311,8 +311,15 @@ def train_model(model, train_loader, val_loader, num_epochs=100, device='cpu',
         writer.close()
 
 
-def test_model(model, test_loader, device='cpu',
-               integrity_weight=0.1):
+def test_model(model, test_loader, device='cpu', log_dir = None,
+               integrity_weight=0.0, epochs=50):
+    if log_dir is None:
+        log_dir = f'runs/{datetime.now().strftime("%Y%m%d-%H%M%S")}_{model.filename}'
+
+    # Make sure the models folder exists.
+    os.makedirs('models', exist_ok=True)
+    writer = SummaryWriter(log_dir)
+
     model.eval()
     test_loss = 0
     test_bce_loss = 0
@@ -324,7 +331,7 @@ def test_model(model, test_loader, device='cpu',
     with torch.no_grad():
         for i, (data, target, *_) in enumerate(test_loader):
             data, target = data.to(device), target.to(device)
-            output = model(data)
+            output = model.predict(data)
 
             bce_loss = criterion(output, target.float())
             integrity_loss = matrix_integrity_loss(output)
@@ -344,6 +351,11 @@ def test_model(model, test_loader, device='cpu',
     test_integrity_loss /= len(test_loader)
     accuracy = 100. * correct / total
 
+    writer.add_scalar('Loss/test', test_loss, epochs)
+    writer.add_scalar('Loss/test_bce', test_bce_loss, epochs)
+    writer.add_scalar('Loss/test_integrity', test_integrity_loss, epochs)
+    writer.add_scalar('Accuracy/test', accuracy, epochs)
+    
     # Removed tensorboard logging
     print(f'Test Loss: {test_loss:.4f} (BCE: {test_bce_loss:.4f}, Integrity: {test_integrity_loss:.4f})')
     print(f'Test Accuracy: {accuracy:.2f}%')
