@@ -216,14 +216,14 @@ class SeedPuncher(PuncherPrototype):
                 magnitude = 2 if ins['name'].startswith('long') else 1
                 pickup = ins.tile_position - ins.direction.to_vector(magnitude=magnitude)
                 e = self.original_factory.blueprint.find_entity_at_position(pickup)
-                if e is not None and self._is_removable(e):
+                if e is not None and self._is_removable(e) and ('belt' in e.name or 'splitter' in e.name):
                     yield e
         for inslist in self.inserters_from.values():
             for ins in inslist:
                 magnitude = 2 if ins['name'].startswith('long') else 1
                 dropoff = ins.tile_position + ins.direction.to_vector(magnitude=magnitude)
                 e = self.original_factory.blueprint.find_entity_at_position(dropoff)
-                if e is not None and self._is_removable(e):
+                if e is not None and self._is_removable(e) and ('belt' in e.name or 'splitter' in e.name):
                     yield e
                 
         remnants = [entity for entity in self.original_factory.blueprint.entities if self._is_removable(entity)]
