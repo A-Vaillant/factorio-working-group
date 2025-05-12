@@ -384,18 +384,25 @@ def visualize_changes_for_tensorboard(writer, epoch, input_matrix, ground_truth,
     
     # Create figure
     fig, axes = plt.subplots(21, 3, figsize=(15, 80))
-    titles = ['Input', 'Ground Truth', 'Changes (Green=Correct, Red=Wrong)']
+    titles = ['Input', 'Ground Truth', 'Changes (cyan=Correct, Red=Wrong)']
     
     # Set column titles
     for col, title in enumerate(titles):
         axes[0, col].set_title(title, pad=20)
     
     forest_green = (0.133, 0.545, 0.133)
-
+    
+    current_row = 0
     for row in range(21):
+        # Skip if channel is empty
+        if not (input_np[:,:,row].any() or 
+                ground_truth_np[:,:,row].any() or 
+                output_np[:,:,row].any()):
+            continue
+        
         # Show input and ground truth
-        axes[row, 0].imshow(input_np[:,:,row], cmap='binary', interpolation='nearest')
-        axes[row, 1].imshow(ground_truth_np[:,:,row], cmap='binary', interpolation='nearest')
+        axes[current_row, 0].imshow(input_np[:,:,row], cmap='binary', interpolation='nearest')
+        axes[current_row, 1].imshow(ground_truth_np[:,:,row], cmap='binary', interpolation='nearest')
         
         # Create white background
         change_viz = np.ones((*input_np.shape[:2], 3))
@@ -419,11 +426,21 @@ def visualize_changes_for_tensorboard(writer, epoch, input_matrix, ground_truth,
         
         # Clean up axes
         for col in range(3):
-            axes[row, col].set_xticks([])
-            axes[row, col].set_yticks([])
+            # Add gridlines between cells
+            height, width = input_np.shape[:2]
+            # Add vertical gridlines
+            axes[current_row, col].set_xticks(np.arange(width+1)-.5, minor=True)
+            # Add horizontal gridlines
+            axes[current_row, col].set_yticks(np.arange(height+1)-.5, minor=True)
             if col == 0:
-                axes[row, col].set_ylabel(channel_names[row])
-    
+                axes[current_row, col].set_ylabel(channel_names[row])
+        current_row += 1
+        
+    # Remove empty subplots
+    for row in range(current_row, 21):
+        for col in range(3):
+            fig.delaxes(axes[row, col])
+
     plt.tight_layout()
     writer.add_figure('Matrix_Visualization', fig, epoch)
     plt.close()

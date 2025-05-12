@@ -14,9 +14,10 @@ from .utils import (bound_bp_by_entities,
 
 
 # You surely will not regret putting a global variable in your representation module.
+global REPR_VERSION
 REPR_VERSION = 5
 
-
+# AV: This is incomplete, to reduce the complexity involved.
 # inserter_index = {k: ix+1 for ix, k in enumerate(entities.inserters)}
 inserter_index = {
     "inserter": 1,
@@ -71,15 +72,12 @@ def center_in_N(matrix, N: int = 15) -> np.ndarray[np.ndarray]:
     if matrix.ndim == 2:
         h, w = matrix.shape
         c = 1
-        matrix = matrix.reshape(h, w, 1)
+        matrix = matrix.reshape(h, w, c)
     else:
         h, w, c = matrix.shape
     
     # Create empty NxN matrix
-    if c == 1:
-        centered_matrix = np.zeros((N, N), dtype=int)
-    else:
-        centered_matrix = np.zeros((N, N, c), dtype=int)
+    centered_matrix = np.zeros((N, N, c), dtype=int)
 
     t, l, b, r = find_bounding_box(matrix)
     # logging.info(f"Bounding box: top={t}, left={l}, bottom={b}, right={r}")
@@ -104,7 +102,8 @@ def center_in_N(matrix, N: int = 15) -> np.ndarray[np.ndarray]:
 
     # Place the original matrix in the center
     if c == 1:
-        centered_matrix[start_h:start_h+content_h, start_w:start_w+content_w] = centered_matrix.reshape(h, w)
+        centered_matrix = centered_matrix[:, :, 1]  # Return a 2x2 matrix for funsies
+        # centered_matrix[start_h:start_h+content_h, start_w:start_w+content_w] = centered_matrix.reshape(h, w)
     return centered_matrix
 
 

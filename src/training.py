@@ -175,7 +175,7 @@ def matrix_integrity_loss(pred, weights=None):
 def train_model(model, train_loader, val_loader, num_epochs=100, device='cpu',
                 integrity_weight=0.0, log_dir=None, viz_interval=5):
     if log_dir is None:
-        log_dir = f'runs/{model.filename}_{datetime.now().strftime("%Y%m%d-%H%M%S")}'
+        log_dir = f'runs/{datetime.now().strftime("%Y%m%d-%H%M%S")}_{model.filename}'
     # Make sure the models folder exists.
     os.makedirs('models', exist_ok=True)
     writer = SummaryWriter(log_dir)
