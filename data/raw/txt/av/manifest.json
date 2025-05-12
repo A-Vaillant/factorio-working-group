@@ -4,6 +4,7 @@
     "tags": ["red science"],
     "date": "2023-04-17",
     "data_files": {
-        "Red Science Factories": "greatchain.txt"
+        "Red Science Factories": "greatchain.txt",
+        "Rabbit": "rabbit.txt"
     }
 }
