@@ -2,7 +2,15 @@ import hashlib
 import os
 from torch.utils.data import Dataset
 import pickle
+import numpy as np
 from src.pipeline import FactoryLoader
+from src.processor import SeedPuncher
+from src.utils import generate_distinct_seeds
+import logging
+
+
+logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 
 dataset_map = {
@@ -12,6 +20,93 @@ dataset_map = {
     'factorio-codex': 'csv/factorio-codex',
     'idan': 'csv/idan_blueprints.csv',
 }
+
+class RotationalDataset(Dataset):
+    def __init__(self, data, rotations=4):
+        self.data = data
+        self.num_original = len(data)
+        self.rotations = rotations  # Number of rotations (1=original, 2=+90°, 3=+180°, 4=+270°)
+    
+    def __len__(self):
+        return self.num_original * self.rotations
+    
+    def __getitem__(self, idx):
+        if idx >= self.num_original * self.rotations:
+            raise IndexError()
+        
+        original_idx = idx % self.num_original
+        rotation_idx = idx // self.num_original
+        
+        # Get original data
+        assert(original_idx < self.num_original)
+        X, Y = self.data[original_idx]
+        
+        # Apply rotation if needed
+        if rotation_idx > 0:
+            X = np.rot90(X, k=rotation_idx, axes=(0, 1)).copy()
+            Y = np.rot90(Y, k=rotation_idx, axes=(0, 1)).copy()
+        return X, Y
+
+
+class MatrixTupleDataset(Dataset):
+    def __init__(self, filepath):
+        # Load the data from NPZ file
+        data = np.load(filepath)
+        
+        # Convert to list of torch tensors
+        self.data_tuple = tuple(
+            data[arr_name] for arr_name in data.files
+        )
+        self.length = len(self.data_tuple[0])  # Assuming all lists have same length
+        
+    def __len__(self):
+        return self.length
+        
+    def __getitem__(self, idx):
+        # Return items at position idx from each list in the tuple
+        return tuple(data_list[idx] for data_list in self.data_tuple)
+
+
+def prepare_seed_dataset(dims, repr_version, seed_paths: int = 5,
+                         center=True):
+    F = load_dataset('av-redscience')
+    errors = 0
+    seeds = generate_distinct_seeds(seed_paths)
+    Xs = []
+    Ys = []
+    cs = []
+    i = 0
+    for f in F.factories.values():
+        i += 1
+        for random_seed in seeds:
+            puncher = SeedPuncher(f, random_seed=random_seed)
+            xs, ys, c = puncher.generate_state_action_pairs()
+            for x, y, c_ in zip(xs, ys, c):
+                try:
+                    x_m = x.get_matrix(dims=dims, repr_version=repr_version, center=center)
+                except KeyError:
+                    logger.warning(f"Couldn't convert a matrix due to a NameError: {x}. Recording and continuing.")
+                    errors += 1
+                    continue
+                try:
+                    y_m = y.get_matrix(dims=dims, repr_version=repr_version, center=center)
+                except KeyError:
+                    logger.warning(f"Couldn't convert a matrix due to a NameError: {y}. Recording and continuing.")
+                    errors += 1
+                    continue
+                Xs.append(x_m)
+                Ys.append(y_m)
+                #cs.append(c_)
+    return (Ys, Xs)  # Switch before and after factories HERE.
+
+
+def prepare_and_save_seed_dataset(save_loc, *args, **kwargs):
+    data_tuple = prepare_seed_dataset(*args, **kwargs)
+    arrays = [np.stack(matrix_list) for matrix_list in data_tuple]
+    
+    # Save as a single .npz file with each component named
+    np.savez(save_loc, *arrays)
+
 
 class ChunkedDiskCachedDatasetWrapper(Dataset):
     def __init__(self, base_dataset, cache_dir='dataset_cache', chunk_size=100, force_rebuild=False):

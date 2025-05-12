@@ -164,27 +164,16 @@ def collate_numpy_matrices_without_conditions(batch):
 
 
 def collate_numpy_matrices(batch):
-    levels, actions, conditions = zip(*batch)
+    levels, actions = zip(*batch)
     
     # Stack levels (convert to tensor and change to CHW format)
     levels_np = np.stack(levels)  # Shape: (batch_size, 20, 20, C)
     levels_np = levels_np.astype(np.float32)
     levels_tensor = torch.from_numpy(levels_np).permute(0, 3, 1, 2)  # Shape: (batch_size, C, 20, 20)
     
-    # Handle conditions (may be None)
-    valid_conditions = [c for c in conditions if c is not None]
-    if valid_conditions:
-        conditions_tensor = torch.tensor(valid_conditions, dtype=torch.float32)
-        has_condition = torch.ones(len(conditions), dtype=torch.bool)
-        for i, c in enumerate(conditions):
-            has_condition[i] = c is not None
-    else:
-        conditions_tensor = None
-        has_condition = torch.zeros(len(conditions), dtype=torch.bool)
-    
     # Stack actions
     actions_np = np.stack(actions)  # Shape: (batch_size, 20, 20, C)
     actions_np = actions_np.astype(np.float32)
     actions_tensor = torch.from_numpy(actions_np).permute(0, 3, 1, 2)  # Shape: (batch_size, C, 20, 20)
     
-    return levels_tensor, actions_tensor, conditions_tensor
+    return levels_tensor, actions_tensor

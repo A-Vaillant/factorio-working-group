@@ -11,13 +11,13 @@ class BinaryMatrixTransformCNN(nn.Module):
         super(BinaryMatrixTransformCNN, self).__init__()
         
         # Multiple conv layers with padding to maintain spatial dimensions
-        self.conv1 = nn.Conv2d(channels, 64, kernel_size=3, padding=1)
+        self.conv1 = nn.Conv2d(channels, 64, kernel_size=3, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(64)
         
-        self.conv2 = nn.Conv2d(64, 128, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(64, 128, kernel_size=3, padding=1, bias=False)
         self.bn2 = nn.BatchNorm2d(128)
         
-        self.conv3 = nn.Conv2d(128, 128, kernel_size=3, padding=1)
+        self.conv3 = nn.Conv2d(128, 128, kernel_size=3, padding=1, bias=False)
         self.bn3 = nn.BatchNorm2d(128)
         
         # Project back to original dimensions

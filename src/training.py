@@ -172,13 +172,16 @@ def matrix_integrity_loss(pred, weights=None):
     return loss
 
 
-def train_model(model, train_loader, val_loader, num_epochs=100, device='cuda',
-                integrity_weight=0.1, log_dir=None, viz_interval=5):
+def train_model(model, train_loader, val_loader, num_epochs=100, device='cpu',
+                integrity_weight=0.0, log_dir=None, viz_interval=5):
     if log_dir is None:
         log_dir = f'runs/{model.filename}_{datetime.now().strftime("%Y%m%d-%H%M%S")}'
     # Make sure the models folder exists.
     os.makedirs('models', exist_ok=True)
     writer = SummaryWriter(log_dir)
+    
+    if device == 'cuda':
+        torch.backends.cudnn.benchmark = True
     
     criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([15], device=device))
     # criterion = nn.L1Loss()
@@ -192,8 +195,6 @@ def train_model(model, train_loader, val_loader, num_epochs=100, device='cuda',
             optimizer, mode='min', factor=0.5, patience=5, verbose=True
         )
     
-    
-    
     model = model.to(device)
     best_val_loss = float('inf')
     
@@ -203,9 +204,12 @@ def train_model(model, train_loader, val_loader, num_epochs=100, device='cuda',
         train_bce_loss = 0
         train_integrity_loss = 0
         
-        for batch_idx, (data, target, _) in enumerate(train_loader):
+        for batch_idx, (data, target, *_) in enumerate(train_loader):
             data, target = data.to(device), target.to(device)
-            optimizer.zero_grad()
+            if device == 'cuda':
+                optimizer.zero_grad(set_to_none=True)
+            else:
+                optimizer.zero_grad()
             output = model(data)
             
             bce_loss = criterion(output, target.float())
@@ -231,7 +235,7 @@ def train_model(model, train_loader, val_loader, num_epochs=100, device='cuda',
         
         tp, tn, fp, fn = 0, 0, 0, 0
         with torch.no_grad():
-            for i, (data, target, _) in enumerate(val_loader):
+            for i, (data, target, *_) in enumerate(val_loader):
                 data, target = data.to(device), target.to(device)
                 output = model(data)
                 
@@ -346,6 +350,7 @@ def test_model(model, test_loader, device='cpu',
     
     
 class AugmentedListDataset(Dataset):
+    # kept for legacy
     def __init__(self, Xs, cs, Ys, rotations=4):
         self.data = list(zip(Xs, cs, Ys))
         self.num_original = len(Xs)
@@ -393,9 +398,14 @@ def prepare_dataset(dims=(20,20), repr_version=5,
         for x, y, c_ in zip(xs, ys, c):
             try:
                 x_m = x.get_matrix(dims=dims, repr_version=repr_version, center=center)
+            except KeyError:
+                logger.warning(f"Couldn't convert a matrix due to a NameError: {x}. Recording and continuing.")
+                errors += 1
+                continue
+            try:
                 y_m = y.get_matrix(dims=dims, repr_version=repr_version, center=center)
             except KeyError:
-                logger.warning("Couldn't convert a matrix due to a NameError. Recording and continuing.")
+                logger.warning(f"Couldn't convert a matrix due to a NameError: {y}. Recording and continuing.")
                 errors += 1
                 continue
             Xs.append(x_m)
@@ -403,32 +413,6 @@ def prepare_dataset(dims=(20,20), repr_version=5,
             cs.append(c_)
     return (Ys, cs, Xs)  # Switch before and after factories HERE.
 
-def prepare_seed_dataset(dims, repr_version, seed_paths: int = 5,
-                         center=True):
-    F = load_dataset('av-redscience')
-    errors = 0
-    seeds = generate_distinct_seeds(seed_paths)
-    Xs = []
-    Ys = []
-    cs = []
-    i = 0
-    for f in F.factories.values():
-        i += 1
-        for random_seed in seeds:
-            puncher = SeedPuncher(f, random_seed=random_seed)
-            xs, ys, c = puncher.generate_state_action_pairs()
-            for x, y, c_ in zip(xs, ys, c):
-                try:
-                    x_m = x.get_matrix(dims=dims, repr_version=repr_version, center=center)
-                    y_m = y.get_matrix(dims=dims, repr_version=repr_version, center=center)
-                except KeyError:
-                    logger.warning("Couldn't convert a matrix due to a NameError. Recording and continuing.")
-                    errors += 1
-                    continue
-                Xs.append(x_m)
-                Ys.append(y_m)
-                cs.append(c_)
-    return (Ys, cs, Xs)  # Switch before and after factories HERE.
 
 def split_dataloader(dataloader, val_split=0.2, random_seed=42):
     """

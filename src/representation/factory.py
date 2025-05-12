@@ -53,7 +53,7 @@ class Factory:
         if 'blueprint' not in j:
             raise RepresentationError("Passed in something that wasn't a blueprint.")
         j['blueprint']['entities'] = cls.fix_direction(j['blueprint']['entities'])
-        input = get_blueprintable_from_JSON(j)
+        # input = get_blueprintable_from_JSON(j)
         return Factory(_bp=input, json=j)
 
     @classmethod

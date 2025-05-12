@@ -142,11 +142,11 @@ class PuncherPrototype():
         if num_pairs is not None:
             entity_iterator = itertools.islice(entity_iterator, 0, num_pairs)
         for removable in entity_iterator:
-            ch = self.channels.index(map_entity_to_key(removable))
+            # ch = self.channels.index(map_entity_to_key(removable))
 
             # record 'before'
             before_factory = Factory.from_blueprint(deepcopy(self.blueprint))
-            repair_action = ch
+            repair_action = 0  # DEPRECATING REPAIR ACTIONS
 
             self._save_entity(removable)
             self.blueprint.entities.recursive_remove(removable)
@@ -172,7 +172,10 @@ class SeedPuncher(PuncherPrototype):
             asm_x, asm_y = asm.tile_position._data
             is_in_assembler = lambda x, y: (asm_x <= x <= asm_x+2) and (asm_y <= y <= asm_y+2)
             for ins in self.original_factory.blueprint.entities:
-                ins.direction = Direction(ins.direction)
+                try:
+                    ins.direction = Direction(ins.direction)
+                except AttributeError:
+                    ins.direction = Direction.NORTH
                 # TODO: An additional case for long-armed inserters.
                 if map_entity_to_key(ins) != 'inserter': continue  # Skip non-inserters.
                 if ins['name'].startswith('long'):
@@ -192,6 +195,8 @@ class SeedPuncher(PuncherPrototype):
         for ix, assembler in enumerate(assemblers):
             self._save_entity(assembler)
             for ins in inserters_to[ix]:
+                self._save_entity(ins)
+            for ins in inserters_from[ix]:
                 self._save_entity(ins)
         
         self.inserters_to = inserters_to
@@ -224,7 +229,8 @@ class SeedPuncher(PuncherPrototype):
         remnants = [entity for entity in self.original_factory.blueprint.entities if self._is_removable(entity)]
         random.shuffle(remnants)
         for e in remnants:
-            yield e
+            if e is not None:
+                yield e
 
         
         
