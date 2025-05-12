@@ -180,9 +180,16 @@ def train_model(model, train_loader, val_loader, num_epochs=100, device='cuda',
     criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([15], device=device))
     # criterion = nn.L1Loss()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode='min', factor=0.5, patience=5, verbose=True
-    )
+    if (device == 'cpu'):
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode='min', factor=0.5, patience=5
+        )
+    else:
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode='min', factor=0.5, patience=5, verbose=True
+        )
+    
+    
     
     model = model.to(device)
     best_val_loss = float('inf')
